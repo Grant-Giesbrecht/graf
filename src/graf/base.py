@@ -7,12 +7,73 @@ from jarnsaxa import hdf_to_dict, dict_to_hdf
 from pylogfile.base import *
 import copy
 from ganymede import dict_summary
+import matplotlib.font_manager as fm
+import os
 
 logging = LogPile()
 
 GRAF_VERSION = "0.0.0"
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
 MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "None"]
+FONT_TYPES = ['regular', 'bold', 'italic']
+
+try:
+	
+	# Requires Python >= 3.9
+	import importlib.resources
+	mod_path_mp = importlib.resources.files("graf")
+	mod_path = str((mod_path_mp / ''))
+	print(mod_path)
+
+except AttributeError as e:
+	help_data = {}
+	print(f"{Fore.LIGHTRED_EX}Upgrade to Python >= 3.9 for access to standardized fonts. ({e})")
+except Exception as e:
+	help_data = {}
+	print(__name__)
+	print(f"{Fore.LIGHTRED_EX}An error occured. ({e}){Style.RESET_ALL}")
+
+def load_fonts(conf_file:str):
+	
+	# Read conf data
+	with open(conf_file, 'r') as fh:
+		conf_data = json.load(fh)
+	
+	# Scan over all fonts
+	for ff in conf_data['font-list']:
+		
+		# Get font-family name
+		try:
+			ff_name = ff['names'][0]
+		except:
+			print(f"font configuration file missing font name!.")
+			continue
+		
+		# Read each font type
+		for ft in FONT_TYPES:
+			
+			# Check valid data
+			if ft not in ff:
+				print(f"font configuration file missing parameter: {ft} in font-family {ff_name}.")
+				continue
+			
+			# If path is valid, set font object to None
+			if len(ff[ft]) == 0:
+				ff[f'font-{ft}'] = None
+			else:
+				font_path = mod_path
+				for fpd in ff[ft]:
+					font_path = os.path.join(font_path, fpd)
+			
+			# Try to read font
+			try:
+				ff[f'font-{ft}'] = fm.FontProperties(fname=font_path)
+			except:
+				ff[f'font-{ft}'] = None
+	
+	return conf_data
+
+font_data = load_fonts(os.path.join(mod_path, 'assets', 'portable_fonts.json'))
 
 def hexstr_to_rgb(hexstr:str):
 	''' Credit: https://stackoverflow.com/questions/29643352/converting-hex-to-rgb-value-in-python John1024'''
@@ -441,9 +502,9 @@ class Graf(Packable):
 	
 	def save_hdf(self, filename:str):
 		datapacket = self.pack()
-		print(datapacket)
-		dict_summary(datapacket)
-		dict_to_hdf(datapacket, filename, show_detail=True)
+		# print(datapacket)
+		# dict_summary(datapacket)
+		dict_to_hdf(datapacket, filename, show_detail=False)
 	
 	def load_hdf(self, filename:str):
 		datapacket = hdf_to_dict(filename)

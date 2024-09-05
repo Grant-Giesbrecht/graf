@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "py-graf"
+name = "graf-orlock"
 version = "0.0.0.dev0"
 authors = [
   { name="Grant Giesbrecht", email="grant.giesbrecht@colorado.edu" },
@@ -18,3 +18,11 @@ dependencies = [
 	'h5py >= 3.11.0',
 	'matplotlib >= 3.9.1'
 ]
+
+[tool.setuptools.package-data]
+portable_fonts = ["graf.assets.portable_fonts.json"]
+font_suse_reg = ["graf.assets.fonts.SUSE-Regular.ttf"]
+font_suse_bold = ["graf.assets.fonts.SUSE-Bold.ttf"]
+font_mfb_reg = ["graf.assets.fonts.MFBOldstyle-Regular.otf"]
+font_mfb_bold = ["graf.assets.fonts.MFBOldstyle-Bold.otf"]
+font_mfb_italic = ["graf.assets.fonts.MFBOldstyle-Italic.otf"]
