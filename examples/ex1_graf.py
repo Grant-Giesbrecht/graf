@@ -18,6 +18,8 @@ y2 = [7,3,7,6,5,7,2,1,9, 0]
 # Make an example MPL plot
 fig1, ax1 = plt.subplots(nrows=1)
 ax1.plot(x1, y1)
+ax1.set_xlabel("X-axis")
+ax1.set_ylabel("Y-axis")
 fig1.suptitle("Test")
 
 graf1 = Graf(fig1) # Convert to GrAF

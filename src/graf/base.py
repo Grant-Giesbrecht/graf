@@ -213,24 +213,42 @@ class Font(Packable):
 	def __init__(self):
 		super().__init__()
 		
+		self.use_native = False
 		self.size = 12
-		self.font = "./assets/SUSE"
+		self.font = "sanserif"
 		self.bold = False
 		self.italic = False
 	
 	def set_manifest(self):
 		
+		self.manifest.append("use_native")
 		self.manifest.append("size")
 		self.manifest.append("font")
 		self.manifest.append("bold")
 		self.manifest.append("italic")
 	
-	# def pack(self):
-	# 	return {"size": self.size, "font": self.font, "bold": self.bold, "italic": self.italic}
-	
-	# def unpack(self):
+	def to_tuple(self):
 		
-
+		# Return None if instructed to use native font
+		if self.use_native:
+			return None
+		
+		# Otherwise look for font family
+		for ff_stuct in font_data['font-list']:
+			
+			# Found font family
+			if self.font in ff_stuct['names']:
+				
+				# Return bold if present and requested
+				if self.bold and ff_stuct['font-bold'] is not None:
+					return (ff_stuct['font-bold'], self.size)
+				elif self.italic and ff_stuct['font-italic'] is not None:
+					return (ff_stuct['font-bold'], self.size)
+				elif ff_stuct['font-regular'] is not None:
+					return (ff_stuct['font-regular'], self.size)
+		
+		return None
+				
 class GraphStyle(Packable):
 	''' Represents style parameters for the graph.'''
 	def __init__(self):
@@ -316,8 +334,11 @@ class Scale(Packable):
 	SCALE_ID_Y = 1
 	SCALE_ID_Z = 2
 	
-	def __init__(self, ax=None, scale_id:int=SCALE_ID_X):
+	def __init__(self, gs:GraphStyle, ax=None, scale_id:int=SCALE_ID_X):
 		super().__init__()
+		
+		# Pointer to Graf object's GraphStyle - so fonts can be appropriately initialized
+		self.gs = gs
 		
 		self.is_valid = False # Used so when axes aren't used (ex. Z-axis in 2D plot), GrAF knows to ignore this object. Using None isn't an option because HDF doesn't support NoneTypes.
 		self.val_min = 0
@@ -365,29 +386,41 @@ class Scale(Packable):
 	
 	def apply_to(self, ax, scale_id:int):
 		
+		local_font = self.gs.label_font.to_tuple()
+		
 		if scale_id == Scale.SCALE_ID_X:
 			ax.set_xlim([self.val_min, self.val_max])
 			ax.set_xticks(self.tick_list)
 			ax.set_xticklabels(self.tick_label_list)
-			ax.set_xlabel(self.label)
-		
+			
+			if local_font is not None:
+				ax.set_xlabel(self.label, fontproperties=local_font[0], size=local_font[1])
+			else:
+				ax.set_xlabel(self.label)
+				
 		elif scale_id == Scale.SCALE_ID_Y:
 			ax.set_ylim([self.val_min, self.val_max])
 			ax.set_yticks(self.tick_list)
 			ax.set_yticklabels(self.tick_label_list)
-			ax.set_ylabel(self.label)
+			
+			if local_font is not None:
+				ax.set_ylabel(self.label, fontproperties=local_font[0], size=local_font[1])
+			else:
+				ax.set_ylabel(self.label)
 			
 class Axis(Packable):
 	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
 	
-	def __init__(self, ax=None): #:matplotlib.axes._axes.Axes=None):
+	def __init__(self, gs:GraphStyle, ax=None): #:matplotlib.axes._axes.Axes=None):
 		super().__init__()
 		
+		self.gs = gs
+		
 		self.relative_size = []
-		self.x_axis = Scale()
-		self.y_axis_L = Scale()
-		self.y_axis_R = Scale()
-		self.z_axis = Scale()
+		self.x_axis = Scale(gs)
+		self.y_axis_L = Scale(gs)
+		self.y_axis_R = Scale(gs)
+		self.z_axis = Scale(gs)
 		self.grid_on = False
 		self.traces = {}
 		self.title = ""
@@ -409,13 +442,13 @@ class Axis(Packable):
 	def mimic(self, ax):
 		
 		# self.relative_size = []
-		self.x_axis = Scale(ax, scale_id=Scale.SCALE_ID_X)
-		self.y_axis_L = Scale(ax, scale_id=Scale.SCALE_ID_Y)
+		self.x_axis = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_X)
+		self.y_axis_L = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_Y)
 		# self.y_axis_R = None #TODO: How does MPL handle this?
 		if hasattr(ax, 'get_zlim'):
-			self.z_axis = Scale()
+			self.z_axis = Scale(self.gs)
 		else:
-			self.z_axis = Scale()
+			self.z_axis = Scale(self.gs)
 		self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
 		# self.traces = []
 		
@@ -437,8 +470,6 @@ class Axis(Packable):
 			self.traces[tr].apply_to(ax)
 		
 		ax.set_title(self.title)
-		
-		
 		
 class MetaInfo(Packable):
 	
@@ -474,7 +505,7 @@ class Graf(Packable):
 		self.obj_manifest.append("style")
 		self.obj_manifest.append("info")
 		self.manifest.append("supertitle")
-		self.dict_manifest["axes"] = Axis()
+		self.dict_manifest["axes"] = Axis(GraphStyle())
 	
 	def mimic(self, fig):
 		''' Tells the Graf object to mimic the matplotlib figure as best as possible. '''
@@ -485,7 +516,7 @@ class Graf(Packable):
 		
 		self.axes = {}
 		for idx, ax in enumerate(fig.get_axes()):
-			self.axes[f'Ax{idx}'] = Axis(ax)
+			self.axes[f'Ax{idx}'] = Axis(self.style, ax)
 	
 	
 	def to_fig(self):

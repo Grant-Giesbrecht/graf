@@ -2,15 +2,15 @@
 	"font-list": [
 		{
 			"names": ["suse", "opensuse", "sanserif"],
-			"regular": ["fonts", "SUSE-Regular.ttf"],
+			"regular": ["assets", "fonts", "SUSE-Regular.ttf"],
 			"italic": [],
-			"bold": ["fonts", "SUSE-Bold.ttf"]
+			"bold": ["assets", "fonts", "SUSE-Bold.ttf"]
 		},
 		{
 			"names": ["mfb_oldstyle", "mfb", "serif"],
-			"regular": ["fonts", "MFBOldstyle-Regular.otf"],
-			"italic": ["fonts", "MFBOldstyle-Italic.otf"],
-			"bold": ["fonts", "MFBOldstyle-Bold.otf"]
+			"regular": ["assets", "fonts", "MFBOldstyle-Regular.otf"],
+			"italic": ["assets", "fonts", "MFBOldstyle-Italic.otf"],
+			"bold": ["assets", "fonts", "MFBOldstyle-Bold.otf"]
 		}
 	]
 }
