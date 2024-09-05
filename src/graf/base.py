@@ -10,7 +10,7 @@ MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "None"]
 def hexstr_to_rgb(hexstr:str):
 	''' Credit: https://stackoverflow.com/questions/29643352/converting-hex-to-rgb-value-in-python John1024'''
 	hexstr = hexstr.lstrip('#')
-	return tuple(int(hexstr[i:i+2], 16) for i in (0, 2, 4))
+	return tuple(int(hexstr[i:i+2], 16)/255 for i in (0, 2, 4))
 
 class Font:
 	
@@ -72,7 +72,13 @@ class Trace:
 		self.marker_size = mpl_line.get_markersize()
 		self.line_width = mpl_line.get_linewidth()
 		self.display_name = mpl_line.get_label()
-
+	
+	def apply_to(self, ax):
+		
+		#TODO: Error check line type, marker type, and sizes
+		
+		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.color))
+	
 class Scale:
 	''' Defines a singular axis/scale such as an x-axis.'''
 	
@@ -169,7 +175,10 @@ class Axis:
 		# self.y_axis_R = None
 		# self.z_axis = None
 		ax.grid(self.grid_on)
-		# self.traces = []
+		
+		for tr in self.traces:
+			tr.apply_to(ax)
+		
 		ax.set_title(self.title)
 		
 		
