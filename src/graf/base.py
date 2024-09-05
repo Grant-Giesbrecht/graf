@@ -143,7 +143,7 @@ class Packable(ABC):
 					new_obj.unpack(data[mi][dmk])
 					temp_dict[dmk] = new_obj
 				except Exception as e:
-					logging.error(f"Failed to unpack list of Packables in object of type '{type(self).__name__}'. ({e})")
+					logging.error(f"Failed to unpack dict of Packables in object of type '{type(self).__name__}'. ({e})")
 					return
 			setattr(self, mi, temp_dict)
 
@@ -328,7 +328,7 @@ class Axis(Packable):
 		self.y_axis_R = Scale()
 		self.z_axis = Scale()
 		self.grid_on = False
-		self.traces = []
+		self.traces = {}
 		self.title = ""
 		
 		# Initialize with axes if possible
@@ -342,7 +342,7 @@ class Axis(Packable):
 		self.obj_manifest.append("y_axis_R")
 		self.obj_manifest.append("z_axis")
 		self.manifest.append("grid_on")
-		self.list_manifest["traces"] = Trace()
+		self.dict_manifest["traces"] = Trace()
 		self.manifest.append("title")
 	
 	def mimic(self, ax):
@@ -358,8 +358,8 @@ class Axis(Packable):
 		self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
 		# self.traces = []
 		
-		for mpl_trace in ax.lines:
-			self.traces.append(Trace(mpl_trace))
+		for idx, mpl_trace in enumerate(ax.lines):
+			self.traces[f'Tr{idx}'] = Trace(mpl_trace)
 		
 		self.title = str(ax.get_title())
 	
@@ -372,8 +372,8 @@ class Axis(Packable):
 		# self.z_axis = None
 		ax.grid(self.grid_on)
 		
-		for tr in self.traces:
-			tr.apply_to(ax)
+		for tr in self.traces.keys():
+			self.traces[tr].apply_to(ax)
 		
 		ax.set_title(self.title)
 		
