@@ -6,13 +6,26 @@ GRAF_VERSION = "0.0.0"
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
 MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "None"]
 
-class Style:
+class Font:
 	
 	def __init__(self):
-		pass
+		
+		self.size = 12
+		self.font = "./assets/SUSE"
+		self.bold = False
+		self.italic = False
+
+class Style:
+	''' Represents style parameters for the graph.'''
+	def __init__(self):
+		
+		self.supertitle_font = Font()
+		self.title_font = Font()
+		self.graph_font = Font()
+		self.label_font = Font()
 
 class Trace:
-	
+	''' Represents a trace that can be displayed on a set of axes'''
 	def __init__(self):
 		
 		self.use_yaxis_L = False
@@ -27,7 +40,7 @@ class Trace:
 		self.display_name = ""
 
 class Scale:
-	
+	''' Defines a singular axis/scale such as an x-axis.'''
 	
 	def __init__(self):
 		self.val_min = 0
@@ -44,6 +57,7 @@ class Scale:
 		self.val_max = xlim_tuple[1]
 
 class Axis:
+	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
 	
 	def __init__(self, ax:matplotlib.axes._axes.Axes=None):
 		self.relative_size = []
@@ -60,7 +74,7 @@ class Axis:
 			self.mimic(ax)
 	
 	def mimic(self, ax):
-		
+		pass
 		# self.relative_size = []
 		# self.x_axis = Scale()
 		# self.y_axis_L = Scale()
@@ -82,7 +96,7 @@ class Graf:
 	def __init__(self, fig=None):
 		
 		self.style = Style()
-		self.info = {}
+		self.info = MetaInfo()
 		self.supertitle = ""
 		
 		self.axes = []
@@ -109,8 +123,9 @@ def write_pfig(figure:matplotlib.figure.Figure, file_handle):
 
 def write_GrAF(figure, file_handle):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
+	pass
 	
 def write_json_GrAF(figure, file_handle):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
 	
-	
+	pass
