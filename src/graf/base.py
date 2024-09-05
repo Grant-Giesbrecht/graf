@@ -287,7 +287,10 @@ class Trace(Packable):
 	def mimic(self, mpl_line):
 	
 		# self.use_yaxis_L = False
-		self.color = hexstr_to_rgb(mpl_line.get_color())
+		if type(mpl_line.get_color()) == tuple:
+			self.color = mpl_line.get_color()
+		else:
+			self.color = hexstr_to_rgb(mpl_line.get_color())
 		self.x_data = [float(x) for x in mpl_line.get_xdata()]
 		self.y_data = [float(x) for x in mpl_line.get_ydata()]
 		# self.z_data = []
