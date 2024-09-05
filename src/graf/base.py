@@ -215,7 +215,7 @@ class Font(Packable):
 		
 		self.use_native = False
 		self.size = 12
-		self.font = "sanserif"
+		self.font = "serif"
 		self.bold = False
 		self.italic = False
 	
@@ -313,7 +313,7 @@ class Trace(Packable):
 		
 		#TODO: Error check line type, marker type, and sizes
 		
-		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.color))
+		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.color, marker=self.marker_type, markersize=self.marker_size, label=self.display_name))
 	
 	def set_manifest(self):
 		self.manifest.append("use_yaxis_L")
