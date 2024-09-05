@@ -18,13 +18,21 @@ y2 = [7,3,7,6,5,7,2,1,9, 0]
 # Make an example MPL plot
 fig1, ax1 = plt.subplots(nrows=1)
 ax1.plot(x1, y1)
+fig1.suptitle("Test")
 
 graf1 = Graf(fig1) # Convert to GrAF
 fig2 = graf1.to_fig() # Convert from GrAF to fig
 
 graf1_dict = graf1.pack() # Convert GrAF to dict
-graf2 = Graf() 
+graf2 = Graf()
+print(graf1_dict)
+dict_summary(graf1_dict)
 graf2.unpack(graf1_dict) # Init new GrAF from dict
 fig3 = graf2.to_fig() # Convert GrAF to fig
+
+graf2.save_hdf("ex1_test.GrAF")
+graf3 = Graf()
+graf3.load_hdf("ex1_test.GrAF")
+fig4 = graf3.to_fig()
 
 plt.show()

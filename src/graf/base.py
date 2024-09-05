@@ -3,6 +3,12 @@ import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
+from jarnsaxa import hdf_to_dict, dict_to_hdf
+from pylogfile.base import *
+import copy
+from ganymede import dict_summary
+
+logging = LogPile()
 
 GRAF_VERSION = "0.0.0"
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
@@ -33,6 +39,7 @@ class Packable(ABC):
 		self.manifest = []
 		self.obj_manifest = []
 		self.list_manifest = {}
+		self.dict_manifest = {}
 		
 		self.set_manifest()
 	
@@ -61,6 +68,16 @@ class Packable(ABC):
 				
 			# Pack objects in list and add to output data
 			d[mi] = [x.pack() for x in getattr(self, mi)]
+		
+		# Scan over dict manifest
+		for mi in self.dict_manifest:
+			
+			mi_deref = getattr(self, mi)
+			
+			# Pack objects in dict and add to output data
+			d[mi] = {}
+			for midk in mi_deref.keys():
+				d[mi][midk] = mi_deref[midk].pack()
 				
 		# Return data list
 		return d
@@ -87,7 +104,7 @@ class Packable(ABC):
 				return
 			
 		# Try to populate each list of Packable objects in manifest
-		for mi in self.list_manifest:
+		for mi in self.list_manifest.keys():
 				
 			# Scan over list, unpacking each element
 			temp_list = []
@@ -105,6 +122,30 @@ class Packable(ABC):
 					return
 			setattr(self, mi, temp_list)
 				# self.obj_manifest[mi] = copy.deepcopy(temp_list)
+		
+		# Scan over dict manifest
+		for mi in self.dict_manifest.keys():
+			
+			# mi_deref = getattr(self, mi)
+			
+			# # Pack objects in list and add to output data
+			# d[mi] = [mi_deref[midk].pack() for midk in mi_deref.keys()]
+			
+			# Scan over list, unpacking each element
+			temp_dict = {}
+			for dmk in data[mi].keys():
+				# Try to create a new object and unpack a list element
+				try:
+					# Create a new object of the correct type
+					new_obj = copy.deepcopy(self.dict_manifest[mi])
+					
+					# Populate the new object by unpacking it, add to list
+					new_obj.unpack(data[mi][dmk])
+					temp_dict[dmk] = new_obj
+				except Exception as e:
+					logging.error(f"Failed to unpack list of Packables in object of type '{type(self).__name__}'. ({e})")
+					return
+			setattr(self, mi, temp_dict)
 
 class Font(Packable):
 	
@@ -129,7 +170,7 @@ class Font(Packable):
 	# def unpack(self):
 		
 
-class Style(Packable):
+class GraphStyle(Packable):
 	''' Represents style parameters for the graph.'''
 	def __init__(self):
 		super().__init__()
@@ -140,10 +181,10 @@ class Style(Packable):
 		self.label_font = Font()
 	
 	def set_manifest(self):
-		self.manifest.append("supertitle_font")
-		self.manifest.append("title_font")
-		self.manifest.append("graph_font")
-		self.manifest.append("label_font")
+		self.obj_manifest.append("supertitle_font")
+		self.obj_manifest.append("title_font")
+		self.obj_manifest.append("graph_font")
+		self.obj_manifest.append("label_font")
 	
 class Trace(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
@@ -168,8 +209,8 @@ class Trace(Packable):
 	
 		# self.use_yaxis_L = False
 		self.color = hexstr_to_rgb(mpl_line.get_color())
-		self.x_data = mpl_line.get_xdata()
-		self.y_data = mpl_line.get_ydata()
+		self.x_data = [float(x) for x in mpl_line.get_xdata()]
+		self.y_data = [float(x) for x in mpl_line.get_ydata()]
 		# self.z_data = []
 		
 		# Get line type
@@ -187,7 +228,7 @@ class Trace(Packable):
 		#TODO: Normalize these to one somehow?
 		self.marker_size = mpl_line.get_markersize()
 		self.line_width = mpl_line.get_linewidth()
-		self.display_name = mpl_line.get_label()
+		self.display_name = str(mpl_line.get_label())
 	
 	def apply_to(self, ax):
 		
@@ -217,6 +258,7 @@ class Scale(Packable):
 	def __init__(self, ax=None, scale_id:int=SCALE_ID_X):
 		super().__init__()
 		
+		self.is_valid = False # Used so when axes aren't used (ex. Z-axis in 2D plot), GrAF knows to ignore this object. Using None isn't an option because HDF doesn't support NoneTypes.
 		self.val_min = 0
 		self.val_max = 1
 		self.tick_list = []
@@ -229,6 +271,7 @@ class Scale(Packable):
 	
 	def set_manifest(self):
 		
+		self.manifest.append("is_valid")
 		self.manifest.append("val_min")
 		self.manifest.append("val_max")
 		self.manifest.append("tick_list")
@@ -240,22 +283,24 @@ class Scale(Packable):
 	def mimic(self, ax, scale_id:int):
 		
 		if scale_id == Scale.SCALE_ID_X:
+			self.is_valid = True
 			xlim_tuple = ax.get_xlim()
-			self.val_min = xlim_tuple[0]
-			self.val_max = xlim_tuple[1]
-			self.tick_list = ax.get_xticks()
+			self.val_min = float(xlim_tuple[0])
+			self.val_max = float(xlim_tuple[1])
+			self.tick_list = [float(x) for x in ax.get_xticks()]
 			self.minor_tick_list = []
-			self.tick_label_list = ax.get_xticklabels()
-			self.label = ax.get_xlabel()
+			self.tick_label_list = [x.get_text() for x in ax.get_xticklabels()]
+			self.label = str(ax.get_xlabel())
 		
 		elif scale_id == Scale.SCALE_ID_Y:
+			self.is_valid = True
 			ylim_tuple = ax.get_ylim()
-			self.val_min = ylim_tuple[0]
-			self.val_max = ylim_tuple[1]
-			self.tick_list = ax.get_yticks()
+			self.val_min = float(ylim_tuple[0])
+			self.val_max = float(ylim_tuple[1])
+			self.tick_list = [float(x) for x in ax.get_yticks()]
 			self.minor_tick_list = []
-			self.tick_label_list = ax.get_yticklabels()
-			self.label = ax.get_ylabel()
+			self.tick_label_list = [x.get_text() for x in ax.get_yticklabels()]
+			self.label = str(ax.get_ylabel())
 	
 	def apply_to(self, ax, scale_id:int):
 		
@@ -280,8 +325,8 @@ class Axis(Packable):
 		self.relative_size = []
 		self.x_axis = Scale()
 		self.y_axis_L = Scale()
-		self.y_axis_R = None
-		self.z_axis = None
+		self.y_axis_R = Scale()
+		self.z_axis = Scale()
 		self.grid_on = False
 		self.traces = []
 		self.title = ""
@@ -292,16 +337,15 @@ class Axis(Packable):
 	
 	def set_manifest(self):
 		self.manifest.append("relative_size")
-		self.manifest.append("x_axis")
-		self.manifest.append("y_axis_L")
-		self.manifest.append("y_axis_R")
-		self.manifest.append("z_axis")
+		self.obj_manifest.append("x_axis")
+		self.obj_manifest.append("y_axis_L")
+		self.obj_manifest.append("y_axis_R")
+		self.obj_manifest.append("z_axis")
 		self.manifest.append("grid_on")
-		self.manifest.append("traces")
+		self.list_manifest["traces"] = Trace()
 		self.manifest.append("title")
 	
 	def mimic(self, ax):
-		print(ax)
 		
 		# self.relative_size = []
 		self.x_axis = Scale(ax, scale_id=Scale.SCALE_ID_X)
@@ -310,14 +354,14 @@ class Axis(Packable):
 		if hasattr(ax, 'get_zlim'):
 			self.z_axis = Scale()
 		else:
-			self.z_axis = None
+			self.z_axis = Scale()
 		self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
 		# self.traces = []
 		
 		for mpl_trace in ax.lines:
 			self.traces.append(Trace(mpl_trace))
 		
-		self.title = ax.get_title()
+		self.title = str(ax.get_title())
 	
 	def apply_to(self, ax):
 		
@@ -356,31 +400,31 @@ class Graf(Packable):
 	def __init__(self, fig=None):
 		super().__init__()
 		
-		self.style = Style()
+		self.style = GraphStyle()
 		self.info = MetaInfo()
 		self.supertitle = ""
 		
-		self.axes = []
+		self.axes = {} # Has to be a dictinary so HDF knows how to handle it
 		
 		if fig is not None:
 			self.mimic(fig)
 	
 	def set_manifest(self):
-		self.manifest.append("style")
-		self.manifest.append("info")
+		self.obj_manifest.append("style")
+		self.obj_manifest.append("info")
 		self.manifest.append("supertitle")
-		self.manifest.append("axes")
+		self.dict_manifest["axes"] = Axis()
 	
 	def mimic(self, fig):
 		''' Tells the Graf object to mimic the matplotlib figure as best as possible. '''
 		
 		# self.style = ...
 		# self.info = ...
-		self.supertitle = fig.get_suptitle()
+		self.supertitle = str(fig.get_suptitle())
 		
-		self.axes = []
-		for ax in fig.get_axes():
-			self.axes.append(Axis(ax))
+		self.axes = {}
+		for idx, ax in enumerate(fig.get_axes()):
+			self.axes[f'Ax{idx}'] = Axis(ax)
 	
 	
 	def to_fig(self):
@@ -390,10 +434,20 @@ class Graf(Packable):
 		
 		gen_fig.suptitle(self.supertitle)
 		
-		for ax in self.axes:
+		for axkey in self.axes.keys():
 			new_ax = gen_fig.add_subplot()
 			
-			ax.apply_to(new_ax)
+			self.axes[axkey].apply_to(new_ax)
+	
+	def save_hdf(self, filename:str):
+		datapacket = self.pack()
+		print(datapacket)
+		dict_summary(datapacket)
+		dict_to_hdf(datapacket, filename, show_detail=True)
+	
+	def load_hdf(self, filename:str):
+		datapacket = hdf_to_dict(filename)
+		self.unpack(datapacket)
 
 def write_pfig(figure, file_handle): #:matplotlib.figure.Figure, file_handle):
 	''' Writes the contents of a matplotlib figure to a pfig file. '''
@@ -402,9 +456,18 @@ def write_pfig(figure, file_handle): #:matplotlib.figure.Figure, file_handle):
 
 def write_GrAF(figure, file_handle):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
-	pass
 	
-def write_json_GrAF(figure, file_handle):
+	temp_graf = Graf(figure)
+	temp_graf.save_hdf(file_handle)
+
+def read_GrAF(file_handle):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
 	
-	pass
+	temp_graf = Graf()
+	temp_graf.load_hdf(file_handle)
+	return temp_graf.to_fig()
+	
+# def write_json_GrAF(figure, file_handle):
+# 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
+	
+# 	pass

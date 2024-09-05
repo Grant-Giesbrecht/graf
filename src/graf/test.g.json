@@ -1,0 +1,132 @@
+{
+    "supertitle": "Test",
+    "style": {
+        "supertitle_font": {
+            "size": 12,
+            "font": "./assets/SUSE",
+            "bold": false,
+            "italic": false
+        },
+        "title_font": {
+            "size": 12,
+            "font": "./assets/SUSE",
+            "bold": false,
+            "italic": false
+        },
+        "graph_font": {
+            "size": 12,
+            "font": "./assets/SUSE",
+            "bold": false,
+            "italic": false
+        },
+        "label_font": {
+            "size": 12,
+            "font": "./assets/SUSE",
+            "bold": false,
+            "italic": false
+        }
+    },
+    "info": {
+        "version": "0.0.0",
+        "source_language": "Python",
+        "source_library": "GrAF",
+        "source_version": "0.0.0"
+    },
+    "axes": [
+        {
+            "relative_size": [],
+            "y_axis_R": null,
+            "z_axis": null,
+            "grid_on": false,
+            "title": "",
+            "x_axis": {
+                "val_min": 0.8,
+                "val_max": 5.2,
+                "tick_list": [
+                    0.5,
+                    1.0,
+                    1.5,
+                    2.0,
+                    2.5,
+                    3.0,
+                    3.5,
+                    4.0,
+                    4.5,
+                    5.0,
+                    5.5
+                ],
+                "minor_tick_list": [],
+                "tick_label_list": [
+                    "0.5",
+                    "1.0",
+                    "1.5",
+                    "2.0",
+                    "2.5",
+                    "3.0",
+                    "3.5",
+                    "4.0",
+                    "4.5",
+                    "5.0",
+                    "5.5"
+                ],
+                "label": ""
+            },
+            "y_axis_L": {
+                "val_min": 7.75,
+                "val_max": 13.25,
+                "tick_list": [
+                    7.0,
+                    8.0,
+                    9.0,
+                    10.0,
+                    11.0,
+                    12.0,
+                    13.0,
+                    14.0
+                ],
+                "minor_tick_list": [],
+                "tick_label_list": [
+                    "7",
+                    "8",
+                    "9",
+                    "10",
+                    "11",
+                    "12",
+                    "13",
+                    "14"
+                ],
+                "label": ""
+            },
+            "traces": [
+                {
+                    "use_yaxis_L": false,
+                    "color": [
+                        0.12156862745098039,
+                        0.4666666666666667,
+                        0.7058823529411765
+                    ],
+                    "x_data": [
+                        1.0,
+                        2.0,
+                        3.0,
+                        4.0,
+                        5.0
+                    ],
+                    "y_data": [
+                        10.0,
+                        8.0,
+                        12.0,
+                        9.0,
+                        13.0
+                    ],
+                    "z_data": [],
+                    "line_type": "-",
+                    "marker_type": "None",
+                    "marker_size": 6.0,
+                    "line_width": 1.5,
+                    "display_name": "_child0"
+                }
+            ]
+        }
+    ]
+}
