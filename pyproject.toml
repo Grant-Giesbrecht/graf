@@ -3,8 +3,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chillyinductor"
-version = "0.0.0"
+name = "py-graf"
+version = "0.0.0.dev0"
 authors = [
   { name="Grant Giesbrecht", email="grant.giesbrecht@colorado.edu" },
 ]
@@ -15,7 +15,6 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-	'pandas >= 2.0.0',
-	'matplotlib >= 3.9.1',
-	'inputimeout >= 1.0.0'
+	'h5py >= 3.11.0',
+	'matplotlib >= 3.9.1'
 ]

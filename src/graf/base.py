@@ -2,6 +2,7 @@ import h5py
 import pickle
 import matplotlib
 import matplotlib.pyplot as plt
+from abc import ABC, abstractmethod
 
 GRAF_VERSION = "0.0.0"
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
@@ -12,27 +13,142 @@ def hexstr_to_rgb(hexstr:str):
 	hexstr = hexstr.lstrip('#')
 	return tuple(int(hexstr[i:i+2], 16)/255 for i in (0, 2, 4))
 
-class Font:
+class Packable(ABC):
+	""" This class represents all objects that can be packed and unpacked and sent between the client and server
+	
+	manifest, obj_manifest, and list_template are all dictionaries. Each describes a portion of how to represent a class as a string,
+	and how to convert back to the class from the string data.
+	
+	manifest: lists all variables that can be converted to/from JSON natively
+	obj_manifest: lists all variables that are Packable objects or lists of packable objects. Each object will have
+		pack() called, and be understood through its unpack() function.
+	list_template: dictionary mapping item to pack/unpack to its class type, that way during unpack, Packable knows which
+		class to create and call unpack() on.
+	
+	Populate all three of these variables as needed in the set_manifest function. set_manifest is called in super().__init__(), so
+	it shouldn't need to be remembered in any of the child classes.
+	"""
 	
 	def __init__(self):
+		self.manifest = []
+		self.obj_manifest = []
+		self.list_manifest = {}
+		
+		self.set_manifest()
+	
+	@abstractmethod
+	def set_manifest(self):
+		""" This function will populate the manifest and obj_manifest objects"""
+		pass
+	
+	def pack(self):
+		""" Returns the object to as a JSON dictionary """
+		
+		# Initialize dictionary
+		d = {}
+		
+		# Add items in manifest to packaged data
+		for mi in self.manifest:
+			d[mi] = getattr(self, mi)
+		
+		# Scan over object manifest
+		for mi in self.obj_manifest:
+			# Pack object and add to output data
+			d[mi] = getattr(self, mi).pack()
+		
+		# Scan over list manifest
+		for mi in self.list_manifest:
+				
+			# Pack objects in list and add to output data
+			d[mi] = [x.pack() for x in getattr(self, mi)]
+				
+		# Return data list
+		return d
+	
+	def unpack(self, data:dict):
+		""" Populates the object from a JSON dict """
+		
+		# Try to populate each item in manifest
+		for mi in self.manifest:
+			# Try to assign the new value
+			try:
+				setattr(self, mi, data[mi])
+			except Exception as e:
+				logging.error(f"Failed to unpack item in object of type '{type(self).__name__}'. ({e})")
+				return
+		
+		# Try to populate each Packable object in manifest
+		for mi in self.obj_manifest:
+			# Try to update the object by unpacking the item
+			try:
+				getattr(self, mi).unpack(data[mi])
+			except Exception as e:
+				logging.error(f"Failed to unpack Packable in object of type '{type(self).__name__}'. ({e})")
+				return
+			
+		# Try to populate each list of Packable objects in manifest
+		for mi in self.list_manifest:
+				
+			# Scan over list, unpacking each element
+			temp_list = []
+			for list_item in data[mi]:
+				# Try to create a new object and unpack a list element
+				try:
+					# Create a new object of the correct type
+					new_obj = copy.deepcopy(self.list_manifest[mi])
+					
+					# Populate the new object by unpacking it, add to list
+					new_obj.unpack(list_item)
+					temp_list.append(new_obj)
+				except Exception as e:
+					logging.error(f"Failed to unpack list of Packables in object of type '{type(self).__name__}'. ({e})")
+					return
+			setattr(self, mi, temp_list)
+				# self.obj_manifest[mi] = copy.deepcopy(temp_list)
+
+class Font(Packable):
+	
+	def __init__(self):
+		super().__init__()
 		
 		self.size = 12
 		self.font = "./assets/SUSE"
 		self.bold = False
 		self.italic = False
+	
+	def set_manifest(self):
+		
+		self.manifest.append("size")
+		self.manifest.append("font")
+		self.manifest.append("bold")
+		self.manifest.append("italic")
+	
+	# def pack(self):
+	# 	return {"size": self.size, "font": self.font, "bold": self.bold, "italic": self.italic}
+	
+	# def unpack(self):
+		
 
-class Style:
+class Style(Packable):
 	''' Represents style parameters for the graph.'''
 	def __init__(self):
+		super().__init__()
 		
 		self.supertitle_font = Font()
 		self.title_font = Font()
 		self.graph_font = Font()
 		self.label_font = Font()
-
-class Trace:
+	
+	def set_manifest(self):
+		self.manifest.append("supertitle_font")
+		self.manifest.append("title_font")
+		self.manifest.append("graph_font")
+		self.manifest.append("label_font")
+	
+class Trace(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
 	def __init__(self, mpl_line=None):
+		super().__init__()
 		
 		self.use_yaxis_L = False
 		self.color = (1, 0, 0)
@@ -79,7 +195,19 @@ class Trace:
 		
 		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.color))
 	
-class Scale:
+	def set_manifest(self):
+		self.manifest.append("use_yaxis_L")
+		self.manifest.append("color")
+		self.manifest.append("x_data")
+		self.manifest.append("y_data")
+		self.manifest.append("z_data")
+		self.manifest.append("line_type")
+		self.manifest.append("marker_type")
+		self.manifest.append("marker_size")
+		self.manifest.append("line_width")
+		self.manifest.append("display_name")
+	
+class Scale(Packable):
 	''' Defines a singular axis/scale such as an x-axis.'''
 	
 	SCALE_ID_X = 0
@@ -87,6 +215,8 @@ class Scale:
 	SCALE_ID_Z = 2
 	
 	def __init__(self, ax=None, scale_id:int=SCALE_ID_X):
+		super().__init__()
+		
 		self.val_min = 0
 		self.val_max = 1
 		self.tick_list = []
@@ -96,6 +226,16 @@ class Scale:
 		
 		if ax is not None:
 			self.mimic(ax, scale_id)
+	
+	def set_manifest(self):
+		
+		self.manifest.append("val_min")
+		self.manifest.append("val_max")
+		self.manifest.append("tick_list")
+		self.manifest.append("minor_tick_list")
+		self.manifest.append("tick_label_list")
+		self.manifest.append("label")
+		
 	
 	def mimic(self, ax, scale_id:int):
 		
@@ -131,10 +271,12 @@ class Scale:
 			ax.set_yticklabels(self.tick_label_list)
 			ax.set_ylabel(self.label)
 			
-class Axis:
+class Axis(Packable):
 	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
 	
 	def __init__(self, ax=None): #:matplotlib.axes._axes.Axes=None):
+		super().__init__()
+		
 		self.relative_size = []
 		self.x_axis = Scale()
 		self.y_axis_L = Scale()
@@ -147,6 +289,16 @@ class Axis:
 		# Initialize with axes if possible
 		if ax is not None:
 			self.mimic(ax)
+	
+	def set_manifest(self):
+		self.manifest.append("relative_size")
+		self.manifest.append("x_axis")
+		self.manifest.append("y_axis_L")
+		self.manifest.append("y_axis_R")
+		self.manifest.append("z_axis")
+		self.manifest.append("grid_on")
+		self.manifest.append("traces")
+		self.manifest.append("title")
 	
 	def mimic(self, ax):
 		print(ax)
@@ -183,16 +335,26 @@ class Axis:
 		
 		
 		
-class MetaInfo:
+class MetaInfo(Packable):
 	
 	def __init__(self):
+		super().__init__()
+		
 		self.version = GRAF_VERSION
 		self.source_language = "Python"
 		self.source_library = "GrAF"
-
-class Graf:
+		self.source_version = "0.0.0"
+	
+	def set_manifest(self):
+		self.manifest.append("version")
+		self.manifest.append("source_language")
+		self.manifest.append("source_library")
+		self.manifest.append("source_version")
+	
+class Graf(Packable):
 	
 	def __init__(self, fig=None):
+		super().__init__()
 		
 		self.style = Style()
 		self.info = MetaInfo()
@@ -202,6 +364,12 @@ class Graf:
 		
 		if fig is not None:
 			self.mimic(fig)
+	
+	def set_manifest(self):
+		self.manifest.append("style")
+		self.manifest.append("info")
+		self.manifest.append("supertitle")
+		self.manifest.append("axes")
 	
 	def mimic(self, fig):
 		''' Tells the Graf object to mimic the matplotlib figure as best as possible. '''
