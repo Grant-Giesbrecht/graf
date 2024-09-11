@@ -3,12 +3,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "graf-orlock"
+name = "graf-format"
 version = "0.0.0.dev0"
 authors = [
   { name="Grant Giesbrecht", email="grant.giesbrecht@colorado.edu" },
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -16,8 +16,16 @@ classifiers = [
 ]
 dependencies = [
 	'h5py >= 3.11.0',
-	'matplotlib >= 3.9.1'
+	'matplotlib >= 3.9.0'
 ]
+
+
+[project.urls]
+Homepage = "https://github.com/Grant-Giesbrecht/graf"
+Issues = "https://github.com/Grant-Giesbrecht/graf/issues"
+
+[project.scripts]
+graf-viewer = "graf.scripts.grafviewer:main"
 
 [tool.setuptools.package-data]
 portable_fonts = ["graf.assets.portable_fonts.json"]

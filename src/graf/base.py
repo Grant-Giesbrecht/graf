@@ -301,7 +301,28 @@ class Trace(Packable):
 			self.line_type = LINE_TYPES[0]
 		
 		# Get marker
-		self.marker_type = mpl_line.get_marker()
+		mpl_marker_code = mpl_line.get_marker()
+		match mpl_marker_code:
+			case '.':
+				self.marker_type = '.'
+			case '+':
+				self.marker_type = '+'
+			case '^':
+				self.marker_type = '^'
+			case 'v':
+				self.marker_type = 'v'
+			case 's':
+				self.marker_type = 's'
+			case None:
+				self.marker_type = 'None'
+			case 'none':
+				self.marker_type = 'None'
+			case _:
+				self.marker_type = '.'
+		
+		
+		
+		
 		if self.marker_type == None:
 			self.marker_type = "None"
 		if self.marker_type not in MARKER_TYPES:
