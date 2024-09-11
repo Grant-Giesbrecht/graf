@@ -11,6 +11,12 @@
 			"regular": ["assets", "fonts", "MFBOldstyle-Regular.otf"],
 			"italic": ["assets", "fonts", "MFBOldstyle-Italic.otf"],
 			"bold": ["assets", "fonts", "MFBOldstyle-Bold.otf"]
+		},
+		{
+			"names": ["spline", "mono", "monospace"],
+			"regular": ["assets", "fonts", "SplineSansMono-Regular.ttf"],
+			"italic": ["assets", "fonts", "SplineSansMono-Italic.ttf"],
+			"bold": ["assets", "fonts", "SplineSansMono-Bold.ttf"]
 		}
 	]
 }

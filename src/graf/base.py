@@ -244,7 +244,7 @@ class Font(Packable):
 				if self.bold and ff_stuct['font-bold'] is not None:
 					return (ff_stuct['font-bold'], self.size)
 				elif self.italic and ff_stuct['font-italic'] is not None:
-					return (ff_stuct['font-bold'], self.size)
+					return (ff_stuct['font-italic'], self.size)
 				elif ff_stuct['font-regular'] is not None:
 					return (ff_stuct['font-regular'], self.size)
 		
@@ -514,9 +514,9 @@ class Axis(Packable):
 		for tr in self.traces.keys():
 			self.traces[tr].apply_to(ax, self.gs)
 		
+		print(self.gs.title_font.font)
 		local_font = self.gs.title_font.to_tuple()
 		if local_font is not None:
-			print(local_font)
 			ax.set_title(self.title, fontproperties=local_font[0], size=local_font[1])
 		else:
 			ax.set_title(self.title)

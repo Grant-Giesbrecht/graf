@@ -8,6 +8,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('filename')
 parser.add_argument('--sanserif', help="Force use of SanSerif font family.", action='store_true')
 parser.add_argument('--serif', help="Force use of Serif font family.", action='store_true')
+parser.add_argument('--mono', help="Force use of Monospace font family.", action='store_true')
+parser.add_argument('--bold', help="Force use of bold fonts.", action='store_true')
+parser.add_argument('--italic', help="Force use of italic fonts.", action='store_true')
+parser.add_argument('--structure', help="Show internal strucutre of GrAF file.", action='store_true')
 args = parser.parse_args()
 
 def main():
@@ -42,7 +46,21 @@ def main():
 	elif args.sanserif:
 		print("Setting to sanserif")
 		graf1.style.set_all_font_families("sanserif")
-		
+	elif args.mono:
+		print("Setting to monospace")
+		graf1.style.set_all_font_families("monospace")
+	
+	if args.italic:
+		# print("Setting to serif")
+		graf1.style.title_font.italic = True
+		graf1.style.graph_font.italic = True
+		graf1.style.label_font.italic = True
+	if args.bold:
+		# print("Setting to sanserif")
+		graf1.style.title_font.bold = True
+		graf1.style.graph_font.bold = True
+		graf1.style.label_font.bold = True
+	
 	# Generate plot
 	pltfig = graf1.to_fig()
 	plt.show()
