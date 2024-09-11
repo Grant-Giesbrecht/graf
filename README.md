@@ -2,8 +2,6 @@
 <img src="https://github.com/Grant-Giesbrecht/graf/blob/main/docs/images/graf_banner.png?raw=True" width="800">
 </h1><br>
 
-# (graf) Graph Archive Format
-
 ## So what is it?
 GrAF is a file format which allows you to save graphs, including the data and format settings. 
 
