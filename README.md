@@ -1,5 +1,5 @@
 <h1 align="center">
-<img src="https://github.com/Grant-Giesbrecht/graf/blob/main/docs/images/graf_banner.png?raw=True" width="300">
+<img src="https://github.com/Grant-Giesbrecht/graf/blob/main/docs/images/graf_banner.png?raw=True" width="800">
 </h1><br>
 
 # (graf) Graph Archive Format
