@@ -28,7 +28,6 @@ fig2 = graf1.to_fig() # Convert from GrAF to fig
 
 graf1_dict = graf1.pack() # Convert GrAF to dict
 graf2 = Graf()
-print(graf1_dict)
 dict_summary(graf1_dict)
 graf2.unpack(graf1_dict) # Init new GrAF from dict
 fig3 = graf2.to_fig() # Convert GrAF to fig

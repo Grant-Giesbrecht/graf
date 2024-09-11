@@ -23,7 +23,6 @@ try:
 	import importlib.resources
 	mod_path_mp = importlib.resources.files("graf")
 	mod_path = str((mod_path_mp / ''))
-	print(mod_path)
 
 except AttributeError as e:
 	help_data = {}
@@ -215,7 +214,7 @@ class Font(Packable):
 		
 		self.use_native = False
 		self.size = 12
-		self.font = "serif"
+		self.font = "sanserif"
 		self.bold = False
 		self.italic = False
 	
@@ -228,6 +227,8 @@ class Font(Packable):
 		self.manifest.append("italic")
 	
 	def to_tuple(self):
+		
+		#TODO: Apply a default font if family not found
 		
 		# Return None if instructed to use native font
 		if self.use_native:
@@ -258,6 +259,20 @@ class GraphStyle(Packable):
 		self.title_font = Font()
 		self.graph_font = Font()
 		self.label_font = Font()
+	
+	def set_all_font_families(self, fontfamily:str):
+		
+		#TODO: Validate that font family exists
+		self.title_font.font = fontfamily
+		self.graph_font.font = fontfamily
+		self.label_font.font = fontfamily
+	
+	def set_all_font_sizes(self, fontsize:int):
+		
+		#TODO: Validate that font family exists
+		self.title_font.size = fontsize
+		self.graph_font.size = fontsize
+		self.label_font.size = fontsize
 	
 	def set_manifest(self):
 		self.obj_manifest.append("supertitle_font")
@@ -333,7 +348,9 @@ class Trace(Packable):
 		self.line_width = mpl_line.get_linewidth()
 		self.display_name = str(mpl_line.get_label())
 	
-	def apply_to(self, ax):
+	def apply_to(self, ax, gstyle:GraphStyle):
+		
+		self.gs = gstyle
 		
 		#TODO: Error check line type, marker type, and sizes
 		
@@ -408,7 +425,9 @@ class Scale(Packable):
 			self.tick_label_list = [x.get_text() for x in ax.get_yticklabels()]
 			self.label = str(ax.get_ylabel())
 	
-	def apply_to(self, ax, scale_id:int):
+	def apply_to(self, ax, gstyle:GraphStyle, scale_id:int):
+		
+		self.gs = gstyle
 		
 		local_font = self.gs.label_font.to_tuple()
 		
@@ -481,19 +500,26 @@ class Axis(Packable):
 		
 		self.title = str(ax.get_title())
 	
-	def apply_to(self, ax):
+	def apply_to(self, ax, gstyle:GraphStyle):
+		
+		self.gs = gstyle
 		
 		# self.relative_size = []
-		self.x_axis.apply_to(ax, scale_id=Scale.SCALE_ID_X)
-		self.y_axis_L.apply_to(ax, scale_id=Scale.SCALE_ID_Y)
+		self.x_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_X)
+		self.y_axis_L.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Y)
 		# self.y_axis_R = None
 		# self.z_axis = None
 		ax.grid(self.grid_on)
 		
 		for tr in self.traces.keys():
-			self.traces[tr].apply_to(ax)
+			self.traces[tr].apply_to(ax, self.gs)
 		
-		ax.set_title(self.title)
+		local_font = self.gs.title_font.to_tuple()
+		if local_font is not None:
+			print(local_font)
+			ax.set_title(self.title, fontproperties=local_font[0], size=local_font[1])
+		else:
+			ax.set_title(self.title)
 		
 class MetaInfo(Packable):
 	
@@ -553,7 +579,7 @@ class Graf(Packable):
 		for axkey in self.axes.keys():
 			new_ax = gen_fig.add_subplot()
 			
-			self.axes[axkey].apply_to(new_ax)
+			self.axes[axkey].apply_to(new_ax, self.style)
 	
 	def save_hdf(self, filename:str):
 		datapacket = self.pack()
