@@ -9,6 +9,7 @@ import copy
 from ganymede import dict_summary
 import matplotlib.font_manager as fm
 import os
+from matplotlib.gridspec import GridSpec
 
 logging = LogPile()
 
@@ -459,6 +460,8 @@ class Axis(Packable):
 		
 		self.gs = gs
 		
+		self.position = [0, 0] # Position, as row-column from top-left
+		self.span = [1, 1] # Row and column span of axes
 		self.relative_size = []
 		self.x_axis = Scale(gs)
 		self.y_axis_L = Scale(gs)
@@ -473,6 +476,8 @@ class Axis(Packable):
 			self.mimic(ax)
 	
 	def set_manifest(self):
+		self.manifest.append("position")
+		self.manifest.append("span")
 		self.manifest.append("relative_size")
 		self.obj_manifest.append("x_axis")
 		self.obj_manifest.append("y_axis_L")
@@ -499,6 +504,16 @@ class Axis(Packable):
 			self.traces[f'Tr{idx}'] = Trace(mpl_trace)
 		
 		self.title = str(ax.get_title())
+		
+		# Get subplot position
+		col_start = ax.get_subplotspec().colspan.start
+		col_stop = ax.get_subplotspec().colspan.stop
+		row_start = ax.get_subplotspec().rowspan.start
+		row_stop = ax.get_subplotspec().rowspan.stop
+		
+		# Copy to local variables
+		self.position = [row_start, col_start]
+		self.span = [row_stop-row_start, col_stop-col_start]
 	
 	def apply_to(self, ax, gstyle:GraphStyle):
 		
@@ -520,6 +535,16 @@ class Axis(Packable):
 			ax.set_title(self.title, fontproperties=local_font[0], size=local_font[1])
 		else:
 			ax.set_title(self.title)
+		
+	def get_size(self):
+		''' Returns a tuple of (top left row, top left column, bottom right row, bottom right column)'''
+		
+		return [self.position[0], self.position[1], self.position[0]+self.span[0], self.position[1]+self.span[1]]
+	
+	def get_slice(self):
+		''' Access the subplot position as a tuple of (RowSlice, ColSlice)'''
+		
+		return (slice(self.position[0], self.position[0]+self.span[0]), slice(self.position[1], self.position[1]+self.span[1]))
 		
 class MetaInfo(Packable):
 	
@@ -564,10 +589,16 @@ class Graf(Packable):
 		# self.info = ...
 		self.supertitle = str(fig.get_suptitle())
 		
+		#TODO: Determine where each subplot goes and what it's bounds are
+		#can use Ax.get_gridspec() to get the object that defines stuff about the grid
+		# can use ax.get_subplotspec() to get parameters about where the actual subplot sits. THIS is what I want.
+		# ax.get_subplotspec().colspan and .rowspan will give a range() describing the span of the axes. It's weird but workable.
+		# ax.get_
+		
 		self.axes = {}
 		for idx, ax in enumerate(fig.get_axes()):
+			print("Adding axes")
 			self.axes[f'Ax{idx}'] = Axis(self.style, ax)
-	
 	
 	def to_fig(self):
 		''' Converts the Graf object to a matplotlib figure as best as possible.'''
@@ -576,8 +607,34 @@ class Graf(Packable):
 		
 		gen_fig.suptitle(self.supertitle)
 		
+		# Determine grid size from subplots
+		row_min = None
+		row_max = None
+		col_min = None
+		col_max = None
 		for axkey in self.axes.keys():
-			new_ax = gen_fig.add_subplot()
+			ax_size = self.axes[axkey].get_size()
+			if row_min == None:
+				row_min = ax_size[0]
+				row_max = ax_size[2]
+				col_min = ax_size[1]
+				col_max = ax_size[3]
+			else:
+				row_min = np.min([ax_size[0], row_min])
+				row_max = np.max([ax_size[2], row_max])
+				col_min = np.min([ax_size[1], col_min])
+				col_max = np.max([ax_size[3], col_max])
+		
+		# Make gridspec which can be used to assign subplot positions
+		gs = GridSpec(row_max, col_max, figure=gen_fig)
+		
+		for axkey in self.axes.keys():
+			
+			# Get subplot slices to apply to gs object
+			slc = self.axes[axkey].get_slice()
+			
+			# Create new axes, specifying position on GridSpec
+			new_ax = gen_fig.add_subplot(gs[slc[0], slc[1]])
 			
 			self.axes[axkey].apply_to(new_ax, self.style)
 	
