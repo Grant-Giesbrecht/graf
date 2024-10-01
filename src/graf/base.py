@@ -548,27 +548,31 @@ class Axis(Packable):
 		
 class MetaInfo(Packable):
 	
-	def __init__(self):
+	def __init__(self, description:str="", conditions:dict={}):
 		super().__init__()
 		
 		self.version = GRAF_VERSION
 		self.source_language = "Python"
 		self.source_library = "GrAF"
 		self.source_version = "0.0.0"
+		self.description = description
+		self.conditions = conditions
 	
 	def set_manifest(self):
 		self.manifest.append("version")
 		self.manifest.append("source_language")
 		self.manifest.append("source_library")
 		self.manifest.append("source_version")
+		self.manifest.append("description")
+		self.manifest.append("conditions")
 	
 class Graf(Packable):
 	
-	def __init__(self, fig=None):
+	def __init__(self, fig=None, description:str="", conditions:dict={}):
 		super().__init__()
 		
 		self.style = GraphStyle()
-		self.info = MetaInfo()
+		self.info = MetaInfo(description=description, conditions=conditions)
 		self.supertitle = ""
 		
 		self.axes = {} # Has to be a dictinary so HDF knows how to handle it
@@ -653,10 +657,10 @@ def write_pfig(figure, file_handle): #:matplotlib.figure.Figure, file_handle):
 	
 	pickle.dump(figure, file_handle)
 
-def write_GrAF(figure, file_handle):
+def write_GrAF(figure, file_handle, description:str="", conditions:dict={}):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
 	
-	temp_graf = Graf(figure)
+	temp_graf = Graf(figure, description=description, conditions=conditions)
 	temp_graf.save_hdf(file_handle)
 
 def read_GrAF(file_handle):
