@@ -14,12 +14,25 @@ release = '0.0.0'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = []
+extensions = [
+	'sphinx.ext.autodoc',
+	'sphinx.ext.napoleon',
+	'nbsphinx',
+]
+
+nbsphinx_execute = 'always'
+nbsphinx_allow_errors = True
+nbsphinx_kernel_name = 'python3'
+numpydoc_show_class_members = False
+nbsphinx_timeout = 180
+
+# The name of the Pygments (syntax highlighting) style to use.
+pygments_style = 'sphinx'
 
 templates_path = ['_templates']
 exclude_patterns = ['.DS_Store']
 
-language = 'python'
+language = 'en'
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
