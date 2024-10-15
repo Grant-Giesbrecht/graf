@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-.. image:: images/pylogfile_logo_banner.svg
+.. image:: ../images/graf_banner.png
     :target: grafhome_
     :width: 500
     :align: center
