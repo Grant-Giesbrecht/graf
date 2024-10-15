@@ -3,14 +3,23 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to graf's documentation!
-================================
+.. image:: images/graf_banner.svg
+    :target: grafhome_
+    :width: 500
+    :align: center
+
+**GrAF** 
+
+Documentation
+=====================================
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-
+    :maxdepth: 2
+    
+    tutorials/index.rst
+    modules
+    license
+    
 
 Indices and tables
 ==================
@@ -18,3 +27,5 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+.. _grafhome: https://github.com/Grant-Giesbrecht/graf/
