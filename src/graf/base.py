@@ -11,6 +11,14 @@ import matplotlib.font_manager as fm
 import os
 from matplotlib.gridspec import GridSpec
 
+## TODO:
+# 1. Add error bars or shading support
+# 2. Add alpha to color specification
+# 3. Add 3D support (lines)
+# 4. Add 3D support (surface)
+#
+
+
 logging = LogPile()
 
 GRAF_VERSION = "0.0.0"

@@ -5,10 +5,10 @@
 
 .. image:: ../images/graf_banner.png
     :target: grafhome_
-    :width: 500
+    :width: 700
     :align: center
 
-**GrAF** 
+**GrAF** (Graph Archive Format) is a file format which allows you to save graphs, including the data and formatting. GrAF prioritizes ease of access to the underlying data, as well as preserving the key formatting that is neccesary for preserving the scientific meaning of the data. GrAF is designed as a language-agnostic method for preserving figures, as opposed to the more traditional approaches of pickling a matplotlib figure in Python or saving a MATLAB figure to a fig file.
 
 Documentation
 =====================================
