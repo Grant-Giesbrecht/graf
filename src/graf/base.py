@@ -575,6 +575,8 @@ class MetaInfo(Packable):
 		self.manifest.append("conditions")
 	
 class Graf(Packable):
+	""" Class used to read, write and extract data from GrAF files.
+	"""
 	
 	def __init__(self, fig=None, description:str="", conditions:dict={}):
 		super().__init__()
