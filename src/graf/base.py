@@ -294,8 +294,7 @@ class Trace(Packable):
 	def __init__(self, mpl_line=None):
 		super().__init__()
 		
-		self.use_yaxis_L = False
-		self.color = (1, 0, 0)
+		self.use_yaxis_R = False
 		self.x_data = []
 		self.y_data = []
 		self.z_data = []
@@ -304,17 +303,30 @@ class Trace(Packable):
 		self.marker_size = 1
 		self.line_width = 1
 		self.display_name = ""
+		self.include_in_legend = True
+		
+		self.line_color = (1, 0, 0)
+		self.alpha = 1
+		
+		self.marker_color = (1, 0, 0)
 		
 		if mpl_line is not None:
 			self.mimic(mpl_line)
 	
 	def mimic(self, mpl_line):
 	
-		# self.use_yaxis_L = False
+		# self.use_yaxis_R = False
 		if type(mpl_line.get_color()) == tuple:
-			self.color = mpl_line.get_color()
+			self.line_color = mpl_line.get_color()
 		else:
-			self.color = hexstr_to_rgb(mpl_line.get_color())
+			self.line_color = hexstr_to_rgb(mpl_line.get_color())
+		self.alpha = mpl_line.get_alpha()
+		
+		if type(mpl_line.get_markerfacecolor()) == tuple:
+			self.marker_color = mpl_line.get_markerfacecolor()
+		else:
+			self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
+		
 		self.x_data = [float(x) for x in mpl_line.get_xdata()]
 		self.y_data = [float(x) for x in mpl_line.get_ydata()]
 		# self.z_data = []
@@ -344,9 +356,7 @@ class Trace(Packable):
 			case _:
 				self.marker_type = '.'
 		
-		
-		
-		
+		# Get marker
 		if self.marker_type == None:
 			self.marker_type = "None"
 		if self.marker_type not in MARKER_TYPES:
@@ -363,11 +373,10 @@ class Trace(Packable):
 		
 		#TODO: Error check line type, marker type, and sizes
 		
-		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.color, marker=self.marker_type, markersize=self.marker_size, label=self.display_name))
+		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
 	
 	def set_manifest(self):
-		self.manifest.append("use_yaxis_L")
-		self.manifest.append("color")
+		self.manifest.append("use_yaxis_R")
 		self.manifest.append("x_data")
 		self.manifest.append("y_data")
 		self.manifest.append("z_data")
@@ -376,6 +385,11 @@ class Trace(Packable):
 		self.manifest.append("marker_size")
 		self.manifest.append("line_width")
 		self.manifest.append("display_name")
+		self.manifest.append("include_in_legend")
+		
+		self.manifest.append("line_color")
+		self.manifest.append("alpha")
+		self.manifest.append("marker_color")
 	
 class Scale(Packable):
 	''' Defines a singular axis/scale such as an x-axis.'''
@@ -554,6 +568,26 @@ class Axis(Packable):
 		
 		return (slice(self.position[0], self.position[0]+self.span[0]), slice(self.position[1], self.position[1]+self.span[1]))
 		
+	def get_trace_idx(self, search_label:str):
+		"""
+		Finds the trace with the specified label
+		
+		Parameters:
+			search_label (str): Label of trace to return
+		
+		Returns:
+			Matching Trace object, None if no matching trace is found
+		"""
+		
+		# Scan over all traces
+		for idx, tr in enumerate(self.traces.values()):
+			
+			# Return index if match
+			if tr.label == search_label:
+				return idx
+		
+		return None
+		
 class MetaInfo(Packable):
 	
 	def __init__(self, description:str="", conditions:dict={}):
@@ -613,6 +647,100 @@ class Graf(Packable):
 		for idx, ax in enumerate(fig.get_axes()):
 			print("Adding axes")
 			self.axes[f'Ax{idx}'] = Axis(self.style, ax)
+	
+	def get_axis(self, axis_pos:tuple=(0,0)):
+		'''
+		Returns the Axis object at the specified position.
+		
+		Parameters:
+			axis_pos (tuple): Position in (row, column) format of axis.
+		
+		Returns:
+			Specified Axis object, or None if invalid position specified
+		'''
+		
+		# Scan over axes
+		for ax in self.axes.values():
+			
+			# Move on to next axis if either row or column misses box
+			if ax.position[0] > axis_pos[0] or ax.position[0]+ax.span[0]-1 < axis_pos[0]:
+				continue
+			if ax.position[1] > axis_pos[1] or ax.position[1]+ax.span[1]-1 < axis_pos[1]:
+				continue
+		
+			# Return axis
+			return ax
+		
+		return None
+	
+	def get_trace(self, axis_pos:tuple=(0, 0), trace_idx:int=None, trace_label:str=None):
+		
+		# Get specified axis
+		ax = self.get_axis(axis_pos)
+		
+		# If neither index nor label is specified, use idx=0
+		if trace_idx is None and trace_label is None:
+			trace_idx = 0
+		
+		# Get trace index from label
+		if trace_label is not None:
+			trace_idx = ax.get_trace_idx(trace_label)
+		
+		# Return trace
+		try:
+			return ax.traces[f'Tr{trace_idx}']
+		except:
+			return None
+	
+	def get_xdata(self, axis_pos:tuple=(0, 0), trace_idx:int=None, trace_label:str=None, use_np_array:bool=True):
+		"""
+		Returns the X-data of the specified trace on the specified axes.
+		
+		Parameters:
+			axis_pos (tuple): Position in (row, column) format of axis
+			trace_idx (int): Index of trace to access. Alternative to trace_label
+			trace_label (str): Label of trace to access. Alternative to trace_idx
+			use_np_array (bool): Return data in np array format
+		
+		Returns:
+			X-data of specified trace
+		"""
+		
+		# Get trace
+		tr = self.get_trace(axis_pos=axis_pos, trace_idx=trace_idx, trace_label=trace_label)
+		if tr is None:
+			return None
+		
+		# Return data list
+		if use_np_array:
+			return np.array(tr.x_data)
+		else:
+			return list(tr.x_data)
+		
+	def get_ydata(self, axis_pos:tuple=(0, 0), trace_idx:int=None, trace_label:str=None, use_np_array:bool=True):
+		"""
+		Returns the X-data of the specified trace on the specified axes.
+		
+		Parameters:
+			axis_pos (tuple): Position in (row, column) format of axis
+			trace_idx (int): Index of trace to access. Alternative to trace_label
+			trace_label (str): Label of trace to access. Alternative to trace_idx
+			use_np_array (bool): Return data in np array format
+		
+		Returns:
+			X-data of specified trace
+		"""
+		
+		# Get trace
+		tr = self.get_trace(axis_pos=axis_pos, trace_idx=trace_idx, trace_label=trace_label)
+		if tr is None:
+			return None
+		
+		# Return data list
+		if use_np_array:
+			return np.array(tr.y_data)
+		else:
+			return list(tr.y_data)
 	
 	def to_fig(self):
 		''' Converts the Graf object to a matplotlib figure as best as possible.'''

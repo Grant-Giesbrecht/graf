@@ -18,7 +18,8 @@ classifiers = [
 ]
 dependencies = [
 	'h5py >= 3.11.0',
-	'matplotlib >= 3.9.0'
+	'matplotlib >= 3.9.0',
+  'jarnsaxa 
 ]
 
 
