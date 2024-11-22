@@ -27,12 +27,10 @@ MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "None"]
 FONT_TYPES = ['regular', 'bold', 'italic']
 
 try:
-	
 	# Requires Python >= 3.9
 	import importlib.resources
 	mod_path_mp = importlib.resources.files("graf")
 	mod_path = str((mod_path_mp / ''))
-
 except AttributeError as e:
 	help_data = {}
 	print(f"{Fore.LIGHTRED_EX}Upgrade to Python >= 3.9 for access to standardized fonts. ({e})")
@@ -742,10 +740,14 @@ class Graf(Packable):
 		else:
 			return list(tr.y_data)
 	
-	def to_fig(self):
+	def to_fig(self, window_title:str=None):
 		''' Converts the Graf object to a matplotlib figure as best as possible.'''
 		
-		gen_fig = plt.figure()
+		if window_title is None:
+			gen_fig = plt.figure()
+		else:
+			print(window_title)
+			gen_fig = plt.figure(window_title)
 		
 		gen_fig.suptitle(self.supertitle)
 		
@@ -779,6 +781,8 @@ class Graf(Packable):
 			new_ax = gen_fig.add_subplot(gs[slc[0], slc[1]])
 			
 			self.axes[axkey].apply_to(new_ax, self.style)
+		
+		return gen_fig
 	
 	def save_hdf(self, filename:str):
 		datapacket = self.pack()
