@@ -11,7 +11,8 @@ parser.add_argument('--serif', help="Force use of Serif font family.", action='s
 parser.add_argument('--mono', help="Force use of Monospace font family.", action='store_true')
 parser.add_argument('--bold', help="Force use of bold fonts.", action='store_true')
 parser.add_argument('--italic', help="Force use of italic fonts.", action='store_true')
-parser.add_argument('--structure', help="Show internal strucutre of GrAF file.", action='store_true')
+parser.add_argument('--struct', help="Show internal strucutre of GrAF file.", action='store_true')
+parser.add_argument('--structure', help="Show internal strucutre of GrAF file, with verbose options.", action='store_true')
 args = parser.parse_args()
 
 def main():
@@ -42,6 +43,12 @@ def main():
 			pass
 		else:
 			print(f"Other")
+		
+		# Print strucutre if requested
+		if args.structure:
+			dict_summary(graf1.pack(), verbose=2)
+		elif args.struct:
+			dict_summary(graf1.pack(), verbose=1)
 		
 		# Apply styling
 		if args.serif:
