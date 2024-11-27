@@ -29,6 +29,7 @@ Issues = "https://github.com/Grant-Giesbrecht/graf/issues"
 
 [project.scripts]
 graf-viewer = "graf.scripts.grafviewer:main"
+graf-merge = "graf.scripts.grafmerge:main"
 
 [tool.setuptools.package-data]
 portable_fonts = ["graf.assets.portable_fonts.json"]
