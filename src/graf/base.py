@@ -289,9 +289,17 @@ class GraphStyle(Packable):
 	
 class Trace(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
+	
+	TRACE_LINE2D = "TRACE_LINE2D"
+	TRACE_LINE3D = "TRACE_LINE3D"
+	TRACE_COLOR = "TRACE_COLOR"
+	TRACE_SURFACE = "TRACE_SURFACE"
+	
+	
 	def __init__(self, mpl_line=None):
 		super().__init__()
 		
+		self.trace_type = Trace.TRACE_LINE2D
 		self.use_yaxis_R = False
 		self.x_data = []
 		self.y_data = []
