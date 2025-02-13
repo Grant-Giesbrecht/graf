@@ -453,6 +453,8 @@ class Scale(Packable):
 			self.minor_tick_list = []
 			self.tick_label_list = [x.get_text() for x in ax.get_yticklabels()]
 			self.label = str(ax.get_ylabel())
+		
+		#TODO: Add Z-version
 	
 	def apply_to(self, ax, gstyle:GraphStyle, scale_id:int):
 		
