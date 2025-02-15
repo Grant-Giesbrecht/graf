@@ -11,8 +11,8 @@ parser.add_argument('--serif', help="Force use of Serif font family.", action='s
 parser.add_argument('--mono', help="Force use of Monospace font family.", action='store_true')
 parser.add_argument('--bold', help="Force use of bold fonts.", action='store_true')
 parser.add_argument('--italic', help="Force use of italic fonts.", action='store_true')
-parser.add_argument('--struct', help="Show internal strucutre of GrAF file.", action='store_true')
-parser.add_argument('--structure', help="Show internal strucutre of GrAF file, with verbose options.", action='store_true')
+parser.add_argument('-s', '--struct', help="Show internal strucutre of GrAF file.", action='store_true')
+parser.add_argument('-S', '--structure', help="Show internal strucutre of GrAF file, with verbose options.", action='store_true')
 args = parser.parse_args()
 
 def main():
