@@ -2,6 +2,7 @@ import h5py
 import pickle
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 from abc import ABC, abstractmethod
 from jarnsaxa import hdf_to_dict, dict_to_hdf
 from pylogfile.base import *
@@ -296,11 +297,11 @@ class Trace(Packable):
 	TRACE_SURFACE = "TRACE_SURFACE"
 	
 	
-	def __init__(self, mpl_line=None):
+	def __init__(self, mpl_line=None, mpl_img=None, mpl_surf=None, use_twin=False):
 		super().__init__()
 		
 		self.trace_type = Trace.TRACE_LINE2D
-		self.use_yaxis_R = False
+		self.use_yaxis_R = use_twin # Only supported for Trace_line2D
 		self.x_data = []
 		self.y_data = []
 		self.z_data = []
@@ -317,25 +318,45 @@ class Trace(Packable):
 		self.marker_color = (1, 0, 0)
 		
 		if mpl_line is not None:
-			self.mimic(mpl_line)
+			self.mimic(mpl_line=mpl_line, use_twin=use_twin)
+		elif mpl_img is not None:
+			self.mimic(mpl_img=mpl_img)
+		elif mpl_surf is not None:
+			self.mimic(mpl_surf=mpl_surf)
 	
-	def mimic(self, mpl_line):
+	def mimic(self, mpl_line=None, mpl_img=None, mpl_surf=None, use_twin=False):
+		
+		if mpl_line is not None:
+			if isinstance(mpl_line, mlines.Line2D):
+				self.mimic_2dline(mpl_line, use_twin=use_twin)
+			else:
+				self.mimic_3dline(mpl_line)
+				
+	def mimic_2dline(self, mpl_line, use_twin=False):
 	
-		# self.use_yaxis_R = False
+		self.line_type = Trace.TRACE_LINE2D
+		self.use_yaxis_R = use_twin
+		
+		# Get line color
 		if type(mpl_line.get_color()) == tuple:
 			self.line_color = mpl_line.get_color()
 		else:
 			self.line_color = hexstr_to_rgb(mpl_line.get_color())
-		self.alpha = mpl_line.get_alpha()
 		
+		# Get transparency
+		self.alpha = mpl_line.get_alpha()
+		if self.alpha is None:
+			self.alpha = 1
+		
+		# Get marker color
 		if type(mpl_line.get_markerfacecolor()) == tuple:
 			self.marker_color = mpl_line.get_markerfacecolor()
 		else:
 			self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
 		
+		# Get x-data
 		self.x_data = [float(x) for x in mpl_line.get_xdata()]
 		self.y_data = [float(x) for x in mpl_line.get_ydata()]
-		# self.z_data = []
 		
 		# Get line type
 		self.line_type = mpl_line.get_linestyle()
@@ -344,6 +365,71 @@ class Trace(Packable):
 		
 		# Get marker
 		mpl_marker_code = mpl_line.get_marker()
+		match mpl_marker_code:
+			case '.':
+				self.marker_type = '.'
+			case '+':
+				self.marker_type = '+'
+			case '^':
+				self.marker_type = '^'
+			case 'v':
+				self.marker_type = 'v'
+			case 's':
+				self.marker_type = 's'
+			case None:
+				self.marker_type = 'None'
+			case 'none':
+				self.marker_type = 'None'
+			case _:
+				self.marker_type = '.'
+		
+		# Get marker
+		if self.marker_type == None:
+			self.marker_type = "None"
+		if self.marker_type not in MARKER_TYPES:
+			self.marker_type = MARKER_TYPES[0]
+		
+		#TODO: Normalize these to one somehow?
+		self.marker_size = mpl_line.get_markersize()
+		self.line_width = mpl_line.get_linewidth()
+		self.display_name = str(mpl_line.get_label())
+	
+	def mimic_3dline(self, mpl_line):
+	
+		self.line_type = Trace.TRACE_LINE3D
+		
+		# Get line color
+		if type(mpl_line.get_color()) == tuple:
+			self.line_color = mpl_line.get_color()
+		else:
+			self.line_color = hexstr_to_rgb(mpl_line.get_color())
+		
+		# Get transparency
+		self.alpha = mpl_line.get_alpha()
+		if self.alpha is None:
+			self.alpha = 1
+		
+		# Get marker color
+		if type(mpl_line.get_markerfacecolor()) == tuple:
+			self.marker_color = mpl_line.get_markerfacecolor()
+		else:
+			self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
+		
+		# Get all data
+		data3d = mpl_line.get_data_3d()
+		
+		# Unpack into x, y and z
+		self.x_data = [float(xtup[0]) for xtup in data3d]
+		self.y_data = [float(xtup[1]) for xtup in data3d]
+		self.z_data = [float(xtup[2]) for xtup in data3d]
+		
+		# Get line type
+		self.line_type = mpl_line.get_linestyle()
+		if self.line_type not in LINE_TYPES:
+			self.line_type = LINE_TYPES[0]
+		
+		# Get marker
+		mpl_marker_code = mpl_line.get_marker().lower()
 		match mpl_marker_code:
 			case '.':
 				self.marker_type = '.'
@@ -483,7 +569,7 @@ class Scale(Packable):
 class Axis(Packable):
 	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
 	
-	def __init__(self, gs:GraphStyle, ax=None): #:matplotlib.axes._axes.Axes=None):
+	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None): #:matplotlib.axes._axes.Axes=None):
 		super().__init__()
 		
 		self.gs = gs
@@ -501,7 +587,7 @@ class Axis(Packable):
 		
 		# Initialize with axes if possible
 		if ax is not None:
-			self.mimic(ax)
+			self.mimic(ax, twin_ax=twin_ax)
 	
 	def set_manifest(self):
 		self.manifest.append("position")
@@ -515,29 +601,53 @@ class Axis(Packable):
 		self.dict_manifest["traces"] = Trace()
 		self.manifest.append("title")
 	
-	def mimic(self, ax):
+	def mimic(self, ax, twin=None):
+		
+		# Identify main and twin axis
+		if twin is None:
+			main_ax = ax
+			twin_ax = None
+		else:
+			if (ax._sharex is None) and (twin._sharex is not None):
+				main_ax = ax
+				twin_ax = twin
+			elif (ax._sharex is not None) and (twin._sharex is None):
+				main_ax = twin
+				twin_ax = ax
+			else:
+				print(f"ERROR: Improperly paired axes associated as twins. Skipping.")
+				return
 		
 		# self.relative_size = []
-		self.x_axis = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_X)
-		self.y_axis_L = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_Y)
-		# self.y_axis_R = None #TODO: How does MPL handle this?
-		if hasattr(ax, 'get_zlim'):
-			self.z_axis = Scale(self.gs)
+		self.x_axis = Scale(self.gs, main_ax, scale_id=Scale.SCALE_ID_X)
+		self.y_axis_L = Scale(self.gs, main_ax, scale_id=Scale.SCALE_ID_Y)
+		if twin_ax is not None:
+			self.y_axis_R = Scale(self.gs, twin_ax, scale_id=Scale.SCALE_ID_Y)
+		else:
+			self.y_axis_R = None
+		if hasattr(main_ax, 'get_zlim'):
+			self.z_axis = Scale(self.gs, main_ax, scale_id=Scale.SCALE_ID_Z)
 		else:
 			self.z_axis = Scale(self.gs)
-		self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
+		self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
 		# self.traces = []
 		
-		for idx, mpl_trace in enumerate(ax.lines):
+		# Find and mimic all lines (2d and 3d)
+		for idx, mpl_trace in enumerate(main_ax.lines):
 			self.traces[f'Tr{idx}'] = Trace(mpl_trace)
 		
-		self.title = str(ax.get_title())
+		# Get lines for twin
+		if twin_ax is not None:
+			for idx, mpl_trace in enumerate(twin_ax.lines):
+				self.traces[f'Tr{idx}'] = Trace(mpl_trace, use_twin=True)
+		
+		self.title = str(main_ax.get_title())
 		
 		# Get subplot position
-		col_start = ax.get_subplotspec().colspan.start
-		col_stop = ax.get_subplotspec().colspan.stop
-		row_start = ax.get_subplotspec().rowspan.start
-		row_stop = ax.get_subplotspec().rowspan.stop
+		col_start = main_ax.get_subplotspec().colspan.start
+		col_stop = main_ax.get_subplotspec().colspan.stop
+		row_start = main_ax.get_subplotspec().rowspan.start
+		row_stop = main_ax.get_subplotspec().rowspan.stop
 		
 		# Copy to local variables
 		self.position = [row_start, col_start]
@@ -649,10 +759,39 @@ class Graf(Packable):
 		# ax.get_subplotspec().colspan and .rowspan will give a range() describing the span of the axes. It's weird but workable.
 		# ax.get_
 		
+		# Find twin-axes and merge them here.
+		sole_axes = []
+		twin_axes = []
+		for ax in fig.get_axes():
+			
+			# Check if has twin
+			if hasattr(ax, 'get_shared_x_axes'):
+				if ax._sharex is None:
+					# If primary - add to twins list
+					twin_axes.append([ax])
+				else:
+					# Scan over twin axes lists
+					for tals in twin_axes:
+						if ax._sharex in tals:
+							tals.append(ax)
+			else:
+				# No twin - add to list
+				sole_axes.append(ax)
+		
+		#TODO: Iterate over twin vs sole axes differently
+		
+		# Mimic all sole-axes
 		self.axes = {}
-		for idx, ax in enumerate(fig.get_axes()):
-			print("Adding axes")
+		for idx, ax in enumerate(sole_axes):
 			self.axes[f'Ax{idx}'] = Axis(self.style, ax)
+		
+		# Mimic all sole-axes
+		self.axes = {}
+		for idx, ax in enumerate(sole_axes):
+			if len(ax) != 2:
+				print(f"ERROR: Failed to properly identify twin axes. Skipping.")
+				continue
+			self.axes[f'Ax{idx}'] = Axis(self.style, ax[0], twin_ax=ax[1])
 	
 	def get_axis(self, axis_pos:tuple=(0,0)):
 		'''
