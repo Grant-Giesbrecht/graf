@@ -24,7 +24,7 @@ logging = LogPile()
 
 GRAF_VERSION = "0.0.0"
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
-MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "None"]
+MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "|", "_", "*", "None"]
 FONT_TYPES = ['regular', 'bold', 'italic']
 
 try:
@@ -375,11 +375,21 @@ class Trace(Packable):
 			case 'v':
 				self.marker_type = 'v'
 			case 's':
-				self.marker_type = 's'
+				self.marker_type = '[]'
+			case 'o':
+				self.marker_type = 'o'
 			case None:
 				self.marker_type = 'None'
 			case 'none':
 				self.marker_type = 'None'
+			case '*':
+				self.marker_type = '*'
+			case '_':
+				self.marker_type = '_'
+			case '|':
+				self.marker_type = '|'
+			case 'x':
+				self.marker_type = 'x'
 			case _:
 				self.marker_type = '.'
 		
@@ -539,6 +549,8 @@ class Scale(Packable):
 			self.minor_tick_list = []
 			self.tick_label_list = [x.get_text() for x in ax.get_yticklabels()]
 			self.label = str(ax.get_ylabel())
+		
+		#TODO: Add Z-version
 	
 	def apply_to(self, ax, gstyle:GraphStyle, scale_id:int):
 		
