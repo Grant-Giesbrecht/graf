@@ -22,5 +22,11 @@ ax.set_ylabel('Y')
 ax.set_zlabel('Z')
 fig.colorbar(surf)
 
+
+# Recovering 'surf' after the fig is created, look in ax.collections
+# Will be a Poly3DCollection type.
+print(ax.collections)
+print(type(ax.collections[0]))
+
 # Show the plot
 plt.show()
