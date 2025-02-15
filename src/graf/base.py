@@ -11,6 +11,7 @@ from ganymede import dict_summary
 import matplotlib.font_manager as fm
 import os
 from matplotlib.gridspec import GridSpec
+import matplotlib.colors as mcolors
 
 ## TODO:
 # 1. Add error bars or shading support
@@ -338,10 +339,11 @@ class Trace(Packable):
 		self.use_yaxis_R = use_twin
 		
 		# Get line color
-		if type(mpl_line.get_color()) == tuple:
-			self.line_color = mpl_line.get_color()
-		else:
-			self.line_color = hexstr_to_rgb(mpl_line.get_color())
+		self.line_color = mcolors.to_rgb(mpl_line.get_color())
+		# if type(mpl_line.get_color()) == tuple:
+		# 	self.line_color = mpl_line.get_color()
+		# else:
+		# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
 		
 		# Get transparency
 		self.alpha = mpl_line.get_alpha()
@@ -349,10 +351,11 @@ class Trace(Packable):
 			self.alpha = 1
 		
 		# Get marker color
-		if type(mpl_line.get_markerfacecolor()) == tuple:
-			self.marker_color = mpl_line.get_markerfacecolor()
-		else:
-			self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
+		self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
+		# if type(mpl_line.get_markerfacecolor()) == tuple:
+		# 	self.marker_color = mpl_line.get_markerfacecolor()
+		# else:
+		# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
 		
 		# Get x-data
 		self.x_data = [float(x) for x in mpl_line.get_xdata()]
@@ -409,10 +412,11 @@ class Trace(Packable):
 		self.line_type = Trace.TRACE_LINE3D
 		
 		# Get line color
-		if type(mpl_line.get_color()) == tuple:
-			self.line_color = mpl_line.get_color()
-		else:
-			self.line_color = hexstr_to_rgb(mpl_line.get_color())
+		self.line_color = mcolors.to_rgb(mpl_line.get_color())
+		# if type(mpl_line.get_color()) == tuple:
+		# 	self.line_color = mpl_line.get_color()
+		# else:
+		# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
 		
 		# Get transparency
 		self.alpha = mpl_line.get_alpha()
@@ -420,10 +424,11 @@ class Trace(Packable):
 			self.alpha = 1
 		
 		# Get marker color
-		if type(mpl_line.get_markerfacecolor()) == tuple:
-			self.marker_color = mpl_line.get_markerfacecolor()
-		else:
-			self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
+		self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
+		# if type(mpl_line.get_markerfacecolor()) == tuple:
+		# 	self.marker_color = mpl_line.get_markerfacecolor()
+		# else:
+		# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
 		
 		# Get all data
 		data3d = mpl_line.get_data_3d()
@@ -599,7 +604,7 @@ class Axis(Packable):
 		
 		# Initialize with axes if possible
 		if ax is not None:
-			self.mimic(ax, twin_ax=twin_ax)
+			self.mimic(ax, twin=twin_ax)
 	
 	def set_manifest(self):
 		self.manifest.append("position")
@@ -799,7 +804,7 @@ class Graf(Packable):
 		
 		# Mimic all sole-axes
 		self.axes = {}
-		for idx, ax in enumerate(sole_axes):
+		for idx, ax in enumerate(twin_axes):
 			if len(ax) != 2:
 				print(f"ERROR: Failed to properly identify twin axes. Skipping.")
 				continue
@@ -946,7 +951,7 @@ class Graf(Packable):
 	def save_hdf(self, filename:str):
 		datapacket = self.pack()
 		# print(datapacket)
-		# dict_summary(datapacket)
+		dict_summary(datapacket)
 		dict_to_hdf(datapacket, filename, show_detail=False)
 	
 	def load_hdf(self, filename:str):
