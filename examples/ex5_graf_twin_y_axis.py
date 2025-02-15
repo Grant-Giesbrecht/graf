@@ -22,6 +22,8 @@ ax2.set_ylabel('sin', color=color)  # we already handled the x-label with ax1
 ax2.plot(t, data2, color=color)
 ax2.tick_params(axis='y', labelcolor=color)
 
+ax1.grid(True)
+
 fig1.tight_layout()  # otherwise the right y-label is slightly clipped
 
 

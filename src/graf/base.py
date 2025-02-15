@@ -574,6 +574,7 @@ class Scale(Packable):
 				ax.set_xlabel(self.label)
 				
 		elif scale_id == Scale.SCALE_ID_Y:
+			
 			ax.set_ylim([self.val_min, self.val_max])
 			ax.set_yticks(self.tick_list)
 			ax.set_yticklabels(self.tick_label_list)
@@ -671,18 +672,28 @@ class Axis(Packable):
 		self.position = [row_start, col_start]
 		self.span = [row_stop-row_start, col_stop-col_start]
 	
-	def apply_to(self, ax, gstyle:GraphStyle):
+	def apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
 		
 		self.gs = gstyle
 		
+		# Check for missing twin axis
+		if self.y_axis_R is not None:
+			if twin_ax is None:
+				print(f"ERROR: Was not provided neccesary twin axis.")
+				twin_ax = ax.twinx()
+		
 		# Apply traces
 		for tr in self.traces.keys():
-			self.traces[tr].apply_to(ax, self.gs)
+			if self.traces[tr].use_yaxis_R:
+				self.traces[tr].apply_to(twin_ax, self.gs)
+			else:
+				self.traces[tr].apply_to(ax, self.gs)
 		
 		# self.relative_size = []
 		self.x_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_X)
 		self.y_axis_L.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Y)
-		# self.y_axis_R = None
+		if self.y_axis_R is not None:
+			self.y_axis_R.apply_to(twin_ax, self.gs, scale_id=Scale.SCALE_ID_Y)
 		# self.z_axis = None
 		ax.grid(self.grid_on)
 		
@@ -909,6 +920,7 @@ class Graf(Packable):
 	def to_fig(self, window_title:str=None):
 		''' Converts the Graf object to a matplotlib figure as best as possible.'''
 		
+		# TODO: Make the figure size/aspeect ratio set-able
 		if window_title is None:
 			gen_fig = plt.figure()
 		else:
@@ -946,8 +958,12 @@ class Graf(Packable):
 			# Create new axes, specifying position on GridSpec
 			new_ax = gen_fig.add_subplot(gs[slc[0], slc[1]])
 			
-			self.axes[axkey].apply_to(new_ax, self.style)
-		
+			if self.axes[axkey].y_axis_R is None:
+				self.axes[axkey].apply_to(new_ax, self.style)
+			else:
+				new_ax_twin = new_ax.twinx()
+				self.axes[axkey].apply_to(new_ax, self.style, twin_ax=new_ax_twin)
+				
 		return gen_fig
 	
 	def save_hdf(self, filename:str):
