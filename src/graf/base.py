@@ -654,9 +654,10 @@ class Axis(Packable):
 			self.traces[f'Tr{idx}'] = Trace(mpl_trace)
 		
 		# Get lines for twin
+		idx_offset = len(self.traces)
 		if twin_ax is not None:
 			for idx, mpl_trace in enumerate(twin_ax.lines):
-				self.traces[f'Tr{idx}'] = Trace(mpl_trace, use_twin=True)
+				self.traces[f'Tr{idx+idx_offset}'] = Trace(mpl_trace, use_twin=True)
 		
 		self.title = str(main_ax.get_title())
 		
