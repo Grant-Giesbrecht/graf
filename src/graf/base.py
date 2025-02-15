@@ -564,7 +564,6 @@ class Scale(Packable):
 		local_font = self.gs.label_font.to_tuple()
 		
 		if scale_id == Scale.SCALE_ID_X:
-			ax.set_xlim([self.val_min, self.val_max])
 			ax.set_xticks(self.tick_list)
 			ax.set_xticklabels(self.tick_label_list)
 			
@@ -572,10 +571,10 @@ class Scale(Packable):
 				ax.set_xlabel(self.label, fontproperties=local_font[0], size=local_font[1])
 			else:
 				ax.set_xlabel(self.label)
-				
+			ax.set_xlim([self.val_min, self.val_max])
 		elif scale_id == Scale.SCALE_ID_Y:
 			
-			ax.set_ylim([self.val_min, self.val_max])
+			
 			ax.set_yticks(self.tick_list)
 			ax.set_yticklabels(self.tick_label_list)
 			
@@ -583,6 +582,7 @@ class Scale(Packable):
 				ax.set_ylabel(self.label, fontproperties=local_font[0], size=local_font[1])
 			else:
 				ax.set_ylabel(self.label)
+			ax.set_ylim([self.val_min, self.val_max])
 			
 class Axis(Packable):
 	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
@@ -963,7 +963,9 @@ class Graf(Packable):
 			else:
 				new_ax_twin = new_ax.twinx()
 				self.axes[axkey].apply_to(new_ax, self.style, twin_ax=new_ax_twin)
-				
+		
+		gen_fig.tight_layout()
+		
 		return gen_fig
 	
 	def save_hdf(self, filename:str):
