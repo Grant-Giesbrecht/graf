@@ -367,7 +367,7 @@ class Trace(Packable):
 			self.line_type = LINE_TYPES[0]
 		
 		# Get marker
-		mpl_marker_code = mpl_line.get_marker()
+		mpl_marker_code = mpl_line.get_marker().lower()
 		match mpl_marker_code:
 			case '.':
 				self.marker_type = '.'
