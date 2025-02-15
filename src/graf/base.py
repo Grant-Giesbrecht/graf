@@ -559,15 +559,16 @@ class Axis(Packable):
 		
 		self.gs = gstyle
 		
+		# Apply traces
+		for tr in self.traces.keys():
+			self.traces[tr].apply_to(ax, self.gs)
+		
 		# self.relative_size = []
 		self.x_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_X)
 		self.y_axis_L.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Y)
 		# self.y_axis_R = None
 		# self.z_axis = None
 		ax.grid(self.grid_on)
-		
-		for tr in self.traces.keys():
-			self.traces[tr].apply_to(ax, self.gs)
 		
 		print(self.gs.title_font.font)
 		local_font = self.gs.title_font.to_tuple()
