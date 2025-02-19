@@ -12,6 +12,8 @@ import matplotlib.font_manager as fm
 import os
 from matplotlib.gridspec import GridSpec
 import matplotlib.colors as mcolors
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from matplotlib.collections import QuadMesh
 
 ## TODO:
 # 1. Add error bars or shading support
@@ -40,6 +42,32 @@ except Exception as e:
 	help_data = {}
 	print(__name__)
 	print(f"{Fore.LIGHTRED_EX}An error occured. ({e}){Style.RESET_ALL}")
+
+def sample_colormap(cmap_name:str=None, listed_cmap:mcolors.ListedColormap=None, N:int=20):
+	''' Discretizes a colormap, returning a list of rgb lists from the provided
+	colormap.
+	
+	Args:
+		cmap_name: Name of a standard matplotlib colormap
+		listed_cmap: Matplotlib ListedColormap object. If provided, cmap_name is
+			ignored.
+		N: The number of colors to break the colormap into.
+	
+	Returns:
+		The list of rgb lists representing the provided colormap.
+	'''
+	
+	# Get a listed cmap and resample
+	if listed_cmap is not None:
+		cmap = listed_cmap.resampled(N) # Resample in requested resolution
+		colors = [cmap(i) for i in range(N)]
+	elif cmap_name is not None:
+		cmap = plt.get_cmap(cmap_name) # Get ListedColormap from name
+		colors = [cmap(i / (N - 1)) for i in range(N)]
+	else:
+		raise Exception("A colormap name or object must be provided")
+	
+	return colors
 
 def load_fonts(conf_file:str):
 	
@@ -289,6 +317,297 @@ class GraphStyle(Packable):
 		self.obj_manifest.append("graph_font")
 		self.obj_manifest.append("label_font")
 	
+class Surface(Packable):
+	''' Represents a trace that can be displayed on a set of axes'''
+	
+	
+	def __init__(self, mpl_source=None):
+		super().__init__()
+		
+		self.uniform_grid = False
+		self.x_grid = []
+		self.y_grid = []
+		self.z_grid = []
+		self.line_type = LINE_TYPES[0]
+		self.line_width = 1
+		self.display_name = ""
+		self.include_in_legend = True
+		
+		self.line_color = (1, 0, 0)
+		self.alpha = 1
+		
+		if mpl_source is not None:
+			self.mimic(mpl_source=mpl_source)
+	
+	def mimic(self, mpl_source=None):
+		
+		if isinstance(mpl_source, Poly3DCollection):
+			self.mimic_poly3d(mpl_source)
+		elif isinstance(mpl_source, QuadMesh):
+			self.mimic_quadmesh(mpl_source)
+		else:
+			print(f"WARNING: Unrecognized data type {type(mpl_source)} will be ignored.")
+	
+	def mimic_quadmesh(self, mpl_source):
+		
+		# mpl QuadMesh does not support lines
+		self.line_type = "None"
+		
+		# Get X and Y coordinates
+		self.uniform_grid = True # This x and y retrieval method assumes a uniform grid
+		x_list = mpl_source._coordinates[0,:-1,0] + np.diff(mpl_source._coordinates[0,:,0])/2
+		y_list = mpl_source._coordinates[:-1, 0, 1] + np.diff(mpl_source._coordinates[:, 0, 1])/2
+		
+		# Create grids from lists
+		self.x_grid, self.y_grid = np.meshgrid(x_list, y_list)
+		self.z_grid = mpl_source.get_array()
+		
+		# Read transparency layer
+		self.alpha = mpl_source.get_alpha()
+		if self.alpha is None:
+			self.alpha = 1
+		
+		# Get colormap
+		self.cmap = sample_colormap(mpl_source.get_cmap(), N=30) #TODO: Make N adjustable with a flag
+	
+	# def mimic_poly3d(self, mpl_source):
+		
+	# 	#TODO: This is a SURFACE from plot_surface()
+		
+	# 	self.line_type = Trace.TRACE_LINE2D
+	# 	self.use_yaxis_R = use_twin
+		
+	# 	# Get line color
+	# 	self.line_color = mcolors.to_rgb(mpl_line.get_color())
+	# 	# if type(mpl_line.get_color()) == tuple:
+	# 	# 	self.line_color = mpl_line.get_color()
+	# 	# else:
+	# 	# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
+		
+	# 	# Get transparency
+	# 	self.alpha = mpl_line.get_alpha()
+	# 	if self.alpha is None:
+	# 		self.alpha = 1
+		
+	# 	# Get marker color
+	# 	self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
+	# 	# if type(mpl_line.get_markerfacecolor()) == tuple:
+	# 	# 	self.marker_color = mpl_line.get_markerfacecolor()
+	# 	# else:
+	# 	# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
+		
+	# 	# Get x-data
+	# 	self.x_data = [float(x) for x in mpl_line.get_xdata()]
+	# 	self.y_data = [float(x) for x in mpl_line.get_ydata()]
+		
+	# 	# Get line type
+	# 	self.line_type = mpl_line.get_linestyle()
+	# 	if self.line_type not in LINE_TYPES:
+	# 		self.line_type = LINE_TYPES[0]
+		
+	# 	# Get marker
+	# 	mpl_marker_code = mpl_line.get_marker().lower()
+	# 	match mpl_marker_code:
+	# 		case '.':
+	# 			self.marker_type = '.'
+	# 		case '+':
+	# 			self.marker_type = '+'
+	# 		case '^':
+	# 			self.marker_type = '^'
+	# 		case 'v':
+	# 			self.marker_type = 'v'
+	# 		case 's':
+	# 			self.marker_type = '[]'
+	# 		case 'o':
+	# 			self.marker_type = 'o'
+	# 		case None:
+	# 			self.marker_type = 'None'
+	# 		case 'none':
+	# 			self.marker_type = 'None'
+	# 		case '*':
+	# 			self.marker_type = '*'
+	# 		case '_':
+	# 			self.marker_type = '_'
+	# 		case '|':
+	# 			self.marker_type = '|'
+	# 		case 'x':
+	# 			self.marker_type = 'x'
+	# 		case _:
+	# 			self.marker_type = '.'
+		
+	# 	# Get marker
+	# 	if self.marker_type == None:
+	# 		self.marker_type = "None"
+	# 	if self.marker_type not in MARKER_TYPES:
+	# 		self.marker_type = MARKER_TYPES[0]
+		
+	# 	#TODO: Normalize these to one somehow?
+	# 	self.marker_size = mpl_line.get_markersize()
+	# 	self.line_width = mpl_line.get_linewidth()
+	# 	self.display_name = str(mpl_line.get_label())
+
+	# def mimic_2dline(self, mpl_line, use_twin=False):
+	
+	# 	self.line_type = Trace.TRACE_LINE2D
+	# 	self.use_yaxis_R = use_twin
+		
+	# 	# Get line color
+	# 	self.line_color = mcolors.to_rgb(mpl_line.get_color())
+	# 	# if type(mpl_line.get_color()) == tuple:
+	# 	# 	self.line_color = mpl_line.get_color()
+	# 	# else:
+	# 	# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
+		
+	# 	# Get transparency
+	# 	self.alpha = mpl_line.get_alpha()
+	# 	if self.alpha is None:
+	# 		self.alpha = 1
+		
+	# 	# Get marker color
+	# 	self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
+	# 	# if type(mpl_line.get_markerfacecolor()) == tuple:
+	# 	# 	self.marker_color = mpl_line.get_markerfacecolor()
+	# 	# else:
+	# 	# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
+		
+	# 	# Get x-data
+	# 	self.x_data = [float(x) for x in mpl_line.get_xdata()]
+	# 	self.y_data = [float(x) for x in mpl_line.get_ydata()]
+		
+	# 	# Get line type
+	# 	self.line_type = mpl_line.get_linestyle()
+	# 	if self.line_type not in LINE_TYPES:
+	# 		self.line_type = LINE_TYPES[0]
+		
+	# 	# Get marker
+	# 	mpl_marker_code = mpl_line.get_marker().lower()
+	# 	match mpl_marker_code:
+	# 		case '.':
+	# 			self.marker_type = '.'
+	# 		case '+':
+	# 			self.marker_type = '+'
+	# 		case '^':
+	# 			self.marker_type = '^'
+	# 		case 'v':
+	# 			self.marker_type = 'v'
+	# 		case 's':
+	# 			self.marker_type = '[]'
+	# 		case 'o':
+	# 			self.marker_type = 'o'
+	# 		case None:
+	# 			self.marker_type = 'None'
+	# 		case 'none':
+	# 			self.marker_type = 'None'
+	# 		case '*':
+	# 			self.marker_type = '*'
+	# 		case '_':
+	# 			self.marker_type = '_'
+	# 		case '|':
+	# 			self.marker_type = '|'
+	# 		case 'x':
+	# 			self.marker_type = 'x'
+	# 		case _:
+	# 			self.marker_type = '.'
+		
+	# 	# Get marker
+	# 	if self.marker_type == None:
+	# 		self.marker_type = "None"
+	# 	if self.marker_type not in MARKER_TYPES:
+	# 		self.marker_type = MARKER_TYPES[0]
+		
+	# 	#TODO: Normalize these to one somehow?
+	# 	self.marker_size = mpl_line.get_markersize()
+	# 	self.line_width = mpl_line.get_linewidth()
+	# 	self.display_name = str(mpl_line.get_label())
+	
+	# def mimic_3dline(self, mpl_line):
+	
+	# 	self.line_type = Trace.TRACE_LINE3D
+		
+	# 	# Get line color
+	# 	self.line_color = mcolors.to_rgb(mpl_line.get_color())
+	# 	# if type(mpl_line.get_color()) == tuple:
+	# 	# 	self.line_color = mpl_line.get_color()
+	# 	# else:
+	# 	# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
+		
+	# 	# Get transparency
+	# 	self.alpha = mpl_line.get_alpha()
+	# 	if self.alpha is None:
+	# 		self.alpha = 1
+		
+	# 	# Get marker color
+	# 	self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
+	# 	# if type(mpl_line.get_markerfacecolor()) == tuple:
+	# 	# 	self.marker_color = mpl_line.get_markerfacecolor()
+	# 	# else:
+	# 	# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
+		
+	# 	# Get all data
+	# 	data3d = mpl_line.get_data_3d()
+		
+	# 	# Unpack into x, y and z
+	# 	self.x_data = [float(xtup[0]) for xtup in data3d]
+	# 	self.y_data = [float(xtup[1]) for xtup in data3d]
+	# 	self.z_data = [float(xtup[2]) for xtup in data3d]
+		
+	# 	# Get line type
+	# 	self.line_type = mpl_line.get_linestyle()
+	# 	if self.line_type not in LINE_TYPES:
+	# 		self.line_type = LINE_TYPES[0]
+		
+	# 	# Get marker
+	# 	mpl_marker_code = mpl_line.get_marker().lower()
+	# 	match mpl_marker_code:
+	# 		case '.':
+	# 			self.marker_type = '.'
+	# 		case '+':
+	# 			self.marker_type = '+'
+	# 		case '^':
+	# 			self.marker_type = '^'
+	# 		case 'v':
+	# 			self.marker_type = 'v'
+	# 		case 's':
+	# 			self.marker_type = 's'
+	# 		case None:
+	# 			self.marker_type = 'None'
+	# 		case 'none':
+	# 			self.marker_type = 'None'
+	# 		case _:
+	# 			self.marker_type = '.'
+		
+	# 	# Get marker
+	# 	if self.marker_type == None:
+	# 		self.marker_type = "None"
+	# 	if self.marker_type not in MARKER_TYPES:
+	# 		self.marker_type = MARKER_TYPES[0]
+		
+	# 	#TODO: Normalize these to one somehow?
+	# 	self.marker_size = mpl_line.get_markersize()
+	# 	self.line_width = mpl_line.get_linewidth()
+	# 	self.display_name = str(mpl_line.get_label())
+	
+	# def apply_to(self, ax, gstyle:GraphStyle):
+		
+	# 	self.gs = gstyle
+		
+	# 	#TODO: Error check line type, marker type, and sizes
+		
+	# 	ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
+	
+	def set_manifest(self):
+		self.manifest.append("uniform_grid")
+		self.manifest.append("x_grid")
+		self.manifest.append("y_grid")
+		self.manifest.append("z_grid")
+		self.manifest.append("line_type")
+		self.manifest.append("line_width")
+		self.manifest.append("display_name")
+		self.manifest.append("include_in_legend")
+		
+		self.manifest.append("line_color")
+		self.manifest.append("alpha")
+
 class Trace(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
 	
@@ -587,11 +906,16 @@ class Scale(Packable):
 class Axis(Packable):
 	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
 	
+	AXIS_LINE2D = "AXIS_LINE2D"
+	AXIS_LINE3D = "AXIS_LINE3D"
+	AXIS_IMAGE = "AXIS_IMAGE"
+	AXIS_SURFACE = "AXIS_SURFACE"
+	
 	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None): #:matplotlib.axes._axes.Axes=None):
 		super().__init__()
 		
 		self.gs = gs
-		
+		self.axis_type = Axis.AXIS_LINE2D
 		self.position = [0, 0] # Position, as row-column from top-left
 		self.span = [1, 1] # Row and column span of axes
 		self.relative_size = []
@@ -601,6 +925,7 @@ class Axis(Packable):
 		self.z_axis = Scale(gs)
 		self.grid_on = False
 		self.traces = {}
+		self.surfaces = {}
 		self.title = ""
 		
 		# Initialize with axes if possible
@@ -620,6 +945,15 @@ class Axis(Packable):
 		self.manifest.append("title")
 	
 	def mimic(self, ax, twin=None):
+		
+		#TODO: Detect axis type
+		if (len(ax.collections) > 0) or (len(ax.collections) > 0):
+			self.axis_type = Axis.AXIS_IMAGE
+			self.mimic_image(ax)
+		else:
+			self.mimic_line(ax, twin=twin)
+	
+	def mimic_line(self, ax, twin=None):
 		
 		# Identify main and twin axis
 		if twin is None:
@@ -646,9 +980,10 @@ class Axis(Packable):
 		if hasattr(main_ax, 'get_zlim'):
 			self.z_axis = Scale(self.gs, main_ax, scale_id=Scale.SCALE_ID_Z)
 		else:
-			self.z_axis = Scale(self.gs)
+			self.z_axis = None
 		self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
 		# self.traces = []
+		
 		
 		# Find and mimic all lines (2d and 3d)
 		for idx, mpl_trace in enumerate(main_ax.lines):
@@ -667,6 +1002,35 @@ class Axis(Packable):
 		col_stop = main_ax.get_subplotspec().colspan.stop
 		row_start = main_ax.get_subplotspec().rowspan.start
 		row_stop = main_ax.get_subplotspec().rowspan.stop
+		
+		# Copy to local variables
+		self.position = [row_start, col_start]
+		self.span = [row_stop-row_start, col_stop-col_start]
+	
+	def mimic_image(self, ax):
+		
+		# self.relative_size = []
+		self.x_axis = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_X)
+		self.y_axis_L = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_Y)
+		self.y_axis_R = None
+		if hasattr(ax, 'get_zlim'): #TODO: Leaving for hybrid. Maybe good to remove.
+			self.z_axis = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_Z)
+		else:
+			self.z_axis = None
+		self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
+		
+		# Find and mimic all images
+		for idx, mpl_image in enumerate(ax.images):
+			self.surfaces[f'Sf{idx}'] = Surface(mpl_image)
+		
+		# for idx, mpl_image in enumerate(ax.collections):
+		# 	self.surfaces[f'Sf{idx}'] = 
+		
+		# Get subplot position
+		col_start = ax.get_subplotspec().colspan.start
+		col_stop = ax.get_subplotspec().colspan.stop
+		row_start = ax.get_subplotspec().rowspan.start
+		row_stop = ax.get_subplotspec().rowspan.stop
 		
 		# Copy to local variables
 		self.position = [row_start, col_start]
@@ -995,8 +1359,7 @@ def read_GrAF(file_handle):
 	temp_graf = Graf()
 	temp_graf.load_hdf(file_handle)
 	return temp_graf.to_fig()
-	
+
 # def write_json_GrAF(figure, file_handle):
 # 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
-	
 # 	pass

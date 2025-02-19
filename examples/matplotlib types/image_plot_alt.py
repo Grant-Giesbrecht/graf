@@ -17,9 +17,7 @@ Z2 = np.exp(-(X - 1)**2 - (Y - 1)**2)
 Z = (Z1 - Z2) * 2
 
 fig, ax0 = plt.subplots()
-im = ax0.imshow(Z, interpolation='bilinear', cmap=cm.RdYlGn,
-               origin='lower', extent=[-3, 3, -3, 3],
-               vmax=abs(Z).max(), vmin=-abs(Z).max())
+im = ax0.imshow(Z, interpolation='bilinear', cmap=cm.RdYlGn, origin='lower', extent=[-3, 3, -3, 3], vmax=abs(Z).max(), vmin=-abs(Z).max())
 
 A = np.random.rand(5, 5)
 
