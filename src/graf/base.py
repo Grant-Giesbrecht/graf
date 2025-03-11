@@ -116,6 +116,29 @@ def hexstr_to_rgb(hexstr:str):
 	hexstr = hexstr.lstrip('#')
 	return tuple(int(hexstr[i:i+2], 16)/255 for i in (0, 2, 4))
 
+def has_twinx(ax):
+	''' Checks if a matplotlib axis has a twin-axis (specifically a 2nd Y that shares a common X). '''
+	
+	# Get list of siblings
+	sibling_list = ax.get_shared_x_axes().get_siblings(ax)
+	
+	# Scan over all axes in figure
+	for fig_ax in ax.figure.axes:
+		
+		# Skip axis if is original axis
+		if fig_ax == ax:
+			continue
+		
+		# Scan over all siblings 
+		for sib_ax in sibling_list:
+			
+			# Return true if found a match
+			if sib_ax == fig_ax:
+				return True
+	
+	# No twin was found
+	return False
+
 class Packable(ABC):
 	""" This class represents all objects that can be packed and unpacked and sent between the client and server
 	
@@ -158,8 +181,11 @@ class Packable(ABC):
 		# Scan over object manifest
 		for mi in self.obj_manifest:
 			# Pack object and add to output data
-			d[mi] = getattr(self, mi).pack()
-		
+			try:
+				d[mi] = getattr(self, mi).pack()
+			except:
+				raise Exception(f"'Packable' object had corrupt object manifest item '{mi}'. Cannot pack.")
+				
 		# Scan over list manifest
 		for mi in self.list_manifest:
 				
@@ -335,6 +361,8 @@ class Surface(Packable):
 		
 		self.line_color = (1, 0, 0)
 		self.alpha = 1
+		
+		self.antialias = False
 		
 		if mpl_source is not None:
 			self.mimic(mpl_source=mpl_source)
@@ -587,13 +615,11 @@ class Surface(Packable):
 	# 	self.line_width = mpl_line.get_linewidth()
 	# 	self.display_name = str(mpl_line.get_label())
 	
-	# def apply_to(self, ax, gstyle:GraphStyle):
+	def apply_to(self, ax, gstyle:GraphStyle):
 		
-	# 	self.gs = gstyle
+		self.gs = gstyle
 		
-	# 	#TODO: Error check line type, marker type, and sizes
-		
-	# 	ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
+		ax.pcolormesh(self.x_grid, self.y_grid, self.z_grid, cmap=mcolors.ListedColormap(self.cmap), alpha=self.alpha, antialiased=self.antialias)
 	
 	def set_manifest(self):
 		self.manifest.append("uniform_grid")
@@ -824,13 +850,14 @@ class Scale(Packable):
 	SCALE_ID_Y = 1
 	SCALE_ID_Z = 2
 	
-	def __init__(self, gs:GraphStyle, ax=None, scale_id:int=SCALE_ID_X):
+	def __init__(self, gs:GraphStyle, valid:bool=True, ax=None, scale_id:int=SCALE_ID_X):
 		super().__init__()
+		''' Instead of making some unused Scales None, we mark them as not valid. '''
 		
 		# Pointer to Graf object's GraphStyle - so fonts can be appropriately initialized
 		self.gs = gs
 		
-		self.is_valid = False # Used so when axes aren't used (ex. Z-axis in 2D plot), GrAF knows to ignore this object. Using None isn't an option because HDF doesn't support NoneTypes.
+		self.is_valid = valid # Used so when axes aren't used (ex. Z-axis in 2D plot), GrAF knows to ignore this object. Using None isn't an option because HDF doesn't support NoneTypes.
 		self.val_min = 0
 		self.val_max = 1
 		self.tick_list = []
@@ -854,6 +881,8 @@ class Scale(Packable):
 	
 	def mimic(self, ax, scale_id:int):
 		
+		print(f"scale mimicing axis.")
+		
 		if scale_id == Scale.SCALE_ID_X:
 			self.is_valid = True
 			xlim_tuple = ax.get_xlim()
@@ -873,7 +902,8 @@ class Scale(Packable):
 			self.minor_tick_list = []
 			self.tick_label_list = [x.get_text() for x in ax.get_yticklabels()]
 			self.label = str(ax.get_ylabel())
-		
+		else:
+			print(f"ERROR: Unrecognized Scale-id: {scale_id}")
 		#TODO: Add Z-version
 	
 	def apply_to(self, ax, gstyle:GraphStyle, scale_id:int):
@@ -903,6 +933,27 @@ class Scale(Packable):
 				ax.set_ylabel(self.label)
 			ax.set_ylim([self.val_min, self.val_max])
 			
+
+# TODO: Merge these with Axis.AXIS_LINE2D etc.
+AXISTYPE_LINE = 0
+AXISTYPE_SURFACE = 1
+AXISTYPE_IMAGE = 2
+AXISTYPE_UNKNOWN = -1
+
+def get_axis_type(mpl_axis):
+	''' Returns a code for the type of data contained. 
+	
+	
+	'''
+	
+	# Check if lines is populated - 2D or 3D line plot
+	if len(mpl_axis.lines) > 0:
+		return AXISTYPE_LINE
+	elif len(mpl_axis.collections) > 0: # From `plot_surface`
+		return AXISTYPE_SURFACE
+	elif len(mpl_axis.images) > 0: # From imagesc?
+		return AXISTYPE_IMAGE
+
 class Axis(Packable):
 	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
 	
@@ -947,10 +998,12 @@ class Axis(Packable):
 	def mimic(self, ax, twin=None):
 		
 		#TODO: Detect axis type
-		if (len(ax.collections) > 0) or (len(ax.collections) > 0):
+		if (len(ax.collections) > 0) or (len(ax.images) > 0):
 			self.axis_type = Axis.AXIS_IMAGE
+			print(f"Copying image")
 			self.mimic_image(ax)
 		else:
+			print("Copying line")
 			self.mimic_line(ax, twin=twin)
 	
 	def mimic_line(self, ax, twin=None):
@@ -970,17 +1023,19 @@ class Axis(Packable):
 				print(f"ERROR: Improperly paired axes associated as twins. Skipping.")
 				return
 		
+		print(f"Initializing scales.")
+		
 		# self.relative_size = []
-		self.x_axis = Scale(self.gs, main_ax, scale_id=Scale.SCALE_ID_X)
-		self.y_axis_L = Scale(self.gs, main_ax, scale_id=Scale.SCALE_ID_Y)
+		self.x_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_X)
+		self.y_axis_L = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_Y)
 		if twin_ax is not None:
-			self.y_axis_R = Scale(self.gs, twin_ax, scale_id=Scale.SCALE_ID_Y)
+			self.y_axis_R = Scale(self.gs, ax=twin_ax, scale_id=Scale.SCALE_ID_Y)
 		else:
-			self.y_axis_R = None
+			self.y_axis_R = Scale(self.gs, valid=False)
 		if hasattr(main_ax, 'get_zlim'):
-			self.z_axis = Scale(self.gs, main_ax, scale_id=Scale.SCALE_ID_Z)
+			self.z_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_Z)
 		else:
-			self.z_axis = None
+			self.z_axis = Scale(self.gs, valid=False)
 		self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
 		# self.traces = []
 		
@@ -1010,13 +1065,13 @@ class Axis(Packable):
 	def mimic_image(self, ax):
 		
 		# self.relative_size = []
-		self.x_axis = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_X)
-		self.y_axis_L = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_Y)
-		self.y_axis_R = None
+		self.x_axis = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_X)
+		self.y_axis_L = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_Y)
+		self.y_axis_R = Scale(self.gs, valid=False)
 		if hasattr(ax, 'get_zlim'): #TODO: Leaving for hybrid. Maybe good to remove.
-			self.z_axis = Scale(self.gs, ax, scale_id=Scale.SCALE_ID_Z)
+			self.z_axis = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_Z)
 		else:
-			self.z_axis = None
+			self.z_axis = Scale(self.gs, valid=False)
 		self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
 		
 		# Find and mimic all images
@@ -1037,6 +1092,13 @@ class Axis(Packable):
 		self.span = [row_stop-row_start, col_stop-col_start]
 	
 	def apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
+		
+		if self.axis_type == Axis.AXIS_LINE2D or self.axis_type == Axis.AXIS_LINE3D:
+			self.line_apply_to(ax, gstyle=gstyle, twin_ax=twin_ax)
+		else:
+			self.image_apply_to(ax, gstyle=gstyle)
+	
+	def line_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
 		
 		self.gs = gstyle
 		
@@ -1061,7 +1123,25 @@ class Axis(Packable):
 		# self.z_axis = None
 		ax.grid(self.grid_on)
 		
-		print(self.gs.title_font.font)
+		local_font = self.gs.title_font.to_tuple()
+		if local_font is not None:
+			ax.set_title(self.title, fontproperties=local_font[0], size=local_font[1])
+		else:
+			ax.set_title(self.title)
+	
+	def image_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
+		
+		self.gs = gstyle
+		
+		# Apply traces
+		for sf in self.surfaces.keys():
+			self.surfaces[sf].apply_to(ax, self.gs)
+		
+		# self.relative_size = []
+		self.x_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_X)
+		self.y_axis_L.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Y)
+		ax.grid(self.grid_on)
+		
 		local_font = self.gs.title_font.to_tuple()
 		if local_font is not None:
 			ax.set_title(self.title, fontproperties=local_font[0], size=local_font[1])
@@ -1154,12 +1234,15 @@ class Graf(Packable):
 		# ax.get_
 		
 		# Find twin-axes and merge them here.
-		sole_axes = []
-		twin_axes = []
+		sole_axes = [] # This is a list of axes
+		twin_axes = [] # This is a list of lists of axes. Each sub-list contains a list of shared-axes
 		for ax in fig.get_axes():
+			print(ax)
 			
-			# Check if has twin
-			if hasattr(ax, 'get_shared_x_axes'):
+			# Check if axis is twinned
+			if has_twinx(ax):
+				
+				# Check if its the main or secondary axis - add to list accordingly
 				if ax._sharex is None:
 					# If primary - add to twins list
 					twin_axes.append([ax])
@@ -1179,13 +1262,13 @@ class Graf(Packable):
 		for idx, ax in enumerate(sole_axes):
 			self.axes[f'Ax{idx}'] = Axis(self.style, ax)
 		
-		# Mimic all sole-axes
-		self.axes = {}
+		# Mimic all twin-axes
+		idx_offset = len(self.axes)
 		for idx, ax in enumerate(twin_axes):
 			if len(ax) != 2:
 				print(f"ERROR: Failed to properly identify twin axes. Skipping.")
 				continue
-			self.axes[f'Ax{idx}'] = Axis(self.style, ax[0], twin_ax=ax[1])
+			self.axes[f'Ax{idx+idx_offset}'] = Axis(self.style, ax[0], twin_ax=ax[1])
 	
 	def get_axis(self, axis_pos:tuple=(0,0)):
 		'''
@@ -1293,12 +1376,17 @@ class Graf(Packable):
 		
 		gen_fig.suptitle(self.supertitle)
 		
+		# Check for empty graf
+		if len(self.axes) == 0:
+			return gen_fig
+		
 		# Determine grid size from subplots
 		row_min = None
 		row_max = None
 		col_min = None
 		col_max = None
 		for axkey in self.axes.keys():
+			print(axkey, flush=True)
 			ax_size = self.axes[axkey].get_size()
 			if row_min == None:
 				row_min = ax_size[0]
@@ -1335,7 +1423,7 @@ class Graf(Packable):
 	def save_hdf(self, filename:str):
 		datapacket = self.pack()
 		# print(datapacket)
-		dict_summary(datapacket)
+		dict_summary(datapacket, verbose=1) #TODO: Make this a flag
 		dict_to_hdf(datapacket, filename, show_detail=False)
 	
 	def load_hdf(self, filename:str):

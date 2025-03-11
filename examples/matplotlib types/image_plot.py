@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Create sample data
-x = np.arange(-5, 5, 0.1)
+x = np.arange(-25, -15, 0.1)
 y = np.arange(-5, 5, 0.1)
 X, Y = np.meshgrid(x, y)
 Z = np.sin(np.sqrt(X**2 + Y**2))

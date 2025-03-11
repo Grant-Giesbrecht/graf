@@ -22,4 +22,4 @@ fig1.tight_layout()
 g1 = Graf(fig=fig1)
 g1.save_hdf("ex5.graf")
 
-plt.show()
+# plt.show()
