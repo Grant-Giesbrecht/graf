@@ -1,11 +1,12 @@
 import h5py
+import json
 import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 from abc import ABC, abstractmethod
 from jarnsaxa import hdf_to_dict, dict_to_hdf
-from pylogfile.base import *
+import pylogfile.base as plf
 import copy
 from ganymede import dict_summary
 import matplotlib.font_manager as fm
@@ -21,9 +22,6 @@ from matplotlib.collections import QuadMesh
 # 3. Add 3D support (lines)
 # 4. Add 3D support (surface)
 #
-
-
-logging = LogPile()
 
 GRAF_VERSION = "0.0.0"
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
@@ -155,7 +153,15 @@ class Packable(ABC):
 	it shouldn't need to be remembered in any of the child classes.
 	"""
 	
-	def __init__(self):
+	def __init__(self, log:plf.LogPile=None):
+		
+		if log is None:
+			self.log = plf.LogPile(use_mutex=False)
+		else:
+			self.log = log
+			self.log.set_enable_mutex(False)
+		
+		self.log.lowdebug(f"Created object type={type(self)}")
 		self.manifest = []
 		self.obj_manifest = []
 		self.list_manifest = {}
@@ -184,7 +190,7 @@ class Packable(ABC):
 			try:
 				d[mi] = getattr(self, mi).pack()
 			except:
-				raise Exception(f"'Packable' object had corrupt object manifest item '{mi}'. Cannot pack.")
+				raise Exception(f"'Packable' object had corrupt object manifest item '{mi}'. Cannot pack.", detail=f"Type = {type(self)}")
 				
 		# Scan over list manifest
 		for mi in self.list_manifest:
@@ -210,20 +216,24 @@ class Packable(ABC):
 		
 		# Try to populate each item in manifest
 		for mi in self.manifest:
+			self.log.lowdebug(f"Unpacking manifest, item:>{mi}<")
+			
 			# Try to assign the new value
 			try:
 				setattr(self, mi, data[mi])
 			except Exception as e:
-				logging.error(f"Failed to unpack item in object of type '{type(self).__name__}'. ({e})")
+				self.log.error(f"Failed to unpack item in object of type '{type(self).__name__}'. ({e})", detail=f"Type = {type(self)}")
 				return
 		
 		# Try to populate each Packable object in manifest
 		for mi in self.obj_manifest:
+			self.log.lowdebug(f"Unpacking obj_manifest, item:>{mi}<")
+			
 			# Try to update the object by unpacking the item
 			try:
 				getattr(self, mi).unpack(data[mi])
 			except Exception as e:
-				logging.error(f"Failed to unpack Packable in object of type '{type(self).__name__}'. ({e})")
+				self.log.error(f"Failed to unpack Packable in object of type '{type(self).__name__}'. ({e})", detail=f"Type = {type(self)}")
 				return
 			
 		# Try to populate each list of Packable objects in manifest
@@ -232,6 +242,8 @@ class Packable(ABC):
 			# Scan over list, unpacking each element
 			temp_list = []
 			for list_item in data[mi]:
+				self.log.lowdebug(f"Unpacking list_manifest, item:>{mi}<, element:>:a{list_item}<")
+				
 				# Try to create a new object and unpack a list element
 				try:
 					# Create a new object of the correct type
@@ -241,7 +253,7 @@ class Packable(ABC):
 					new_obj.unpack(list_item)
 					temp_list.append(new_obj)
 				except Exception as e:
-					logging.error(f"Failed to unpack list of Packables in object of type '{type(self).__name__}'. ({e})")
+					self.log.error(f"Failed to unpack list of Packables in object of type '{type(self).__name__}'. Type={type(self)}. ({e})", detail=f"Type = {type(self)}")
 					return
 			setattr(self, mi, temp_list)
 				# self.obj_manifest[mi] = copy.deepcopy(temp_list)
@@ -257,23 +269,32 @@ class Packable(ABC):
 			# Scan over list, unpacking each element
 			temp_dict = {}
 			for dmk in data[mi].keys():
+				self.log.lowdebug(f"Unpacking manifest, item:>{mi}<, element:>:a{dmk}<")
+				
 				# Try to create a new object and unpack a list element
 				try:
 					# Create a new object of the correct type
-					new_obj = copy.deepcopy(self.dict_manifest[mi])
+					try:
+						new_obj = copy.deepcopy(self.dict_manifest[mi])
+					except Exception as e:
+						print("Dict Manifest:")
+						print(self.dict_manifest)
+						self.log.error(f"Failed to unpack dict_manifest[{mi}], ({e})")
+						return
 					
 					# Populate the new object by unpacking it, add to list
 					new_obj.unpack(data[mi][dmk])
 					temp_dict[dmk] = new_obj
 				except Exception as e:
-					logging.error(f"Failed to unpack dict of Packables in object of type '{type(self).__name__}'. ({e})")
+					prob_item = data[mi][dmk]
+					self.log.error(f"Failed to unpack dict of Packables in object of type '{type(self).__name__}'. ({e})", detail=f"Class={type(self)}, problem manifest item=(name:{dmk}, type:{type(prob_item)})")
 					return
 			setattr(self, mi, temp_dict)
 
 class Font(Packable):
 	
-	def __init__(self):
-		super().__init__()
+	def __init__(self, log:plf.LogPile=None):
+		super().__init__(log)
 		
 		self.use_native = False
 		self.size = 12
@@ -315,8 +336,8 @@ class Font(Packable):
 				
 class GraphStyle(Packable):
 	''' Represents style parameters for the graph.'''
-	def __init__(self):
-		super().__init__()
+	def __init__(self, log:plf.LogPile=None):
+		super().__init__(log)
 		
 		self.supertitle_font = Font()
 		self.title_font = Font()
@@ -347,8 +368,8 @@ class Surface(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
 	
 	
-	def __init__(self, mpl_source=None):
-		super().__init__()
+	def __init__(self, mpl_source=None, log:plf.LogPile=None):
+		super().__init__(log)
 		
 		self.uniform_grid = False
 		self.x_grid = []
@@ -643,8 +664,8 @@ class Trace(Packable):
 	TRACE_SURFACE = "TRACE_SURFACE"
 	
 	
-	def __init__(self, mpl_line=None, mpl_img=None, mpl_surf=None, use_twin=False):
-		super().__init__()
+	def __init__(self, mpl_line=None, mpl_img=None, mpl_surf=None, use_twin=False, log:plf.LogPile=None):
+		super().__init__(log)
 		
 		self.trace_type = Trace.TRACE_LINE2D
 		self.use_yaxis_R = use_twin # Only supported for Trace_line2D
@@ -850,8 +871,8 @@ class Scale(Packable):
 	SCALE_ID_Y = 1
 	SCALE_ID_Z = 2
 	
-	def __init__(self, gs:GraphStyle, valid:bool=True, ax=None, scale_id:int=SCALE_ID_X):
-		super().__init__()
+	def __init__(self, gs:GraphStyle, valid:bool=True, ax=None, scale_id:int=SCALE_ID_X, log:plf.LogPile=None):
+		super().__init__(log)
 		''' Instead of making some unused Scales None, we mark them as not valid. '''
 		
 		# Pointer to Graf object's GraphStyle - so fonts can be appropriately initialized
@@ -902,6 +923,16 @@ class Scale(Packable):
 			self.minor_tick_list = []
 			self.tick_label_list = [x.get_text() for x in ax.get_yticklabels()]
 			self.label = str(ax.get_ylabel())
+		
+		elif scale_id == Scale.SCALE_ID_Z:
+			self.is_valid = True
+			zlim_tuple = ax.get_zlim()
+			self.val_min = float(zlim_tuple[0])
+			self.val_max = float(zlim_tuple[1])
+			self.tick_list = [float(x) for x in ax.get_zticks()]
+			self.minor_tick_list = []
+			self.tick_label_list = [x.get_text() for x in ax.get_zticklabels()]
+			self.label = str(ax.get_zlabel())
 		else:
 			print(f"ERROR: Unrecognized Scale-id: {scale_id}")
 		#TODO: Add Z-version
@@ -959,8 +990,8 @@ class Axis(Packable):
 	AXIS_IMAGE = "AXIS_IMAGE"
 	AXIS_SURFACE = "AXIS_SURFACE"
 	
-	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None): #:matplotlib.axes._axes.Axes=None):
-		super().__init__()
+	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None, log:plf.LogPile=None): #:matplotlib.axes._axes.Axes=None):
+		super().__init__(log)
 		
 		self.gs = gs
 		self.axis_type = Axis.AXIS_LINE2D
@@ -1023,19 +1054,18 @@ class Axis(Packable):
 		print(f"Initializing scales.")
 		
 		# self.relative_size = []
-		self.x_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_X)
-		self.y_axis_L = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_Y)
+		self.x_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_X, log=self.log)
+		self.y_axis_L = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_Y, log=self.log)
 		if twin_ax is not None:
-			self.y_axis_R = Scale(self.gs, ax=twin_ax, scale_id=Scale.SCALE_ID_Y)
+			self.y_axis_R = Scale(self.gs, ax=twin_ax, scale_id=Scale.SCALE_ID_Y, log=self.log)
 		else:
-			self.y_axis_R = Scale(self.gs, valid=False)
+			self.y_axis_R = Scale(self.gs, valid=False, log=self.log)
 		if hasattr(main_ax, 'get_zlim'):
-			self.z_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_Z)
+			self.z_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_Z, log=self.log)
 		else:
-			self.z_axis = Scale(self.gs, valid=False)
+			self.z_axis = Scale(self.gs, valid=False, log=self.log)
 		self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
 		# self.traces = []
-		
 		
 		# Find and mimic all lines (2d and 3d)
 		for idx, mpl_trace in enumerate(main_ax.lines):
@@ -1177,8 +1207,8 @@ class Axis(Packable):
 		
 class MetaInfo(Packable):
 	
-	def __init__(self, description:str="", conditions:dict={}):
-		super().__init__()
+	def __init__(self, description:str="", conditions:dict={}, log:plf.LogPile=None):
+		super().__init__(log)
 		
 		self.version = GRAF_VERSION
 		self.source_language = "Python"
@@ -1199,11 +1229,11 @@ class Graf(Packable):
 	""" Class used to read, write and extract data from GrAF files.
 	"""
 	
-	def __init__(self, fig=None, description:str="", conditions:dict={}):
-		super().__init__()
+	def __init__(self, fig=None, description:str="", conditions:dict={}, log:plf.LogPile=None):
+		super().__init__(log)
 		
-		self.style = GraphStyle()
-		self.info = MetaInfo(description=description, conditions=conditions)
+		self.style = GraphStyle(log=self.log)
+		self.info = MetaInfo(description=description, conditions=conditions, log=self.log)
 		self.supertitle = ""
 		
 		self.axes = {} # Has to be a dictinary so HDF knows how to handle it
@@ -1220,6 +1250,10 @@ class Graf(Packable):
 	def mimic(self, fig):
 		''' Tells the Graf object to mimic the matplotlib figure as best as possible. '''
 		
+		print(self.log)
+		print(self.log.terminal_level)
+		self.log.debug(f"Mimicing figure {fig}")
+		
 		# self.style = ...
 		# self.info = ...
 		self.supertitle = str(fig.get_suptitle())
@@ -1234,10 +1268,10 @@ class Graf(Packable):
 		sole_axes = [] # This is a list of axes
 		twin_axes = [] # This is a list of lists of axes. Each sub-list contains a list of shared-axes
 		for ax in fig.get_axes():
-			print(ax)
 			
 			# Check if axis is twinned
 			if has_twinx(ax):
+				self.log.lowdebug(f"Adding axis ({ax}) to twin-axes.")
 				
 				# Check if its the main or secondary axis - add to list accordingly
 				if ax._sharex is None:
@@ -1249,6 +1283,8 @@ class Graf(Packable):
 						if ax._sharex in tals:
 							tals.append(ax)
 			else:
+				self.log.lowdebug(f"Adding axis ({ax}) to sole-axes.")
+				
 				# No twin - add to list
 				sole_axes.append(ax)
 		
@@ -1257,7 +1293,7 @@ class Graf(Packable):
 		# Mimic all sole-axes
 		self.axes = {}
 		for idx, ax in enumerate(sole_axes):
-			self.axes[f'Ax{idx}'] = Axis(self.style, ax)
+			self.axes[f'Ax{idx}'] = Axis(self.style, ax, log=self.log)
 		
 		# Mimic all twin-axes
 		idx_offset = len(self.axes)
@@ -1265,7 +1301,7 @@ class Graf(Packable):
 			if len(ax) != 2:
 				print(f"ERROR: Failed to properly identify twin axes. Skipping.")
 				continue
-			self.axes[f'Ax{idx+idx_offset}'] = Axis(self.style, ax[0], twin_ax=ax[1])
+			self.axes[f'Ax{idx+idx_offset}'] = Axis(self.style, ax[0], twin_ax=ax[1], log=self.log)
 	
 	def get_axis(self, axis_pos:tuple=(0,0)):
 		'''
