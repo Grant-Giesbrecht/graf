@@ -14,6 +14,7 @@ import os
 from matplotlib.gridspec import GridSpec
 import matplotlib.colors as mcolors
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import mpl_toolkits.mplot3d as mpl3d
 from matplotlib.collections import QuadMesh
 
 ## TODO:
@@ -685,7 +686,13 @@ class Trace(Packable):
 		self.marker_color = (1, 0, 0)
 		
 		if mpl_line is not None:
+			
 			self.mimic(mpl_line=mpl_line, use_twin=use_twin)
+			# # Check for 2D vs 3D
+			# if isinstance(mpl_line, mpl3d.art3d.Line3D):
+			# 	self.mimic(mpl_line=mpl_line, use_twin=use_twin)
+			# else:
+			# 	self.mimic(mpl_line=mpl_line, use_twin=use_twin)
 		elif mpl_img is not None:
 			self.mimic(mpl_img=mpl_img)
 		elif mpl_surf is not None:
@@ -694,10 +701,13 @@ class Trace(Packable):
 	def mimic(self, mpl_line=None, mpl_img=None, mpl_surf=None, use_twin=False):
 		
 		if mpl_line is not None:
-			if isinstance(mpl_line, mlines.Line2D):
-				self.mimic_2dline(mpl_line, use_twin=use_twin)
-			else:
+			# if isinstance(mpl_line, mlines.Line2D):
+			if isinstance(mpl_line, mpl3d.art3d.Line3D):
+				self.log.lowdebug(f"Detected line as 3D", detail=f"Type={type(mpl_line)}")
 				self.mimic_3dline(mpl_line)
+			else:
+				self.log.lowdebug(f"Detected line as 2D", detail=f"Type={type(mpl_line)}")
+				self.mimic_2dline(mpl_line, use_twin=use_twin)
 				
 	def mimic_2dline(self, mpl_line, use_twin=False):
 	
@@ -776,6 +786,7 @@ class Trace(Packable):
 	def mimic_3dline(self, mpl_line):
 	
 		self.line_type = Trace.TRACE_LINE3D
+		self.use_yaxis_R = False
 		
 		# Get line color
 		self.line_color = mcolors.to_rgb(mpl_line.get_color())
@@ -800,9 +811,12 @@ class Trace(Packable):
 		data3d = mpl_line.get_data_3d()
 		
 		# Unpack into x, y and z
-		self.x_data = [float(xtup[0]) for xtup in data3d]
-		self.y_data = [float(xtup[1]) for xtup in data3d]
-		self.z_data = [float(xtup[2]) for xtup in data3d]
+		self.x_data = data3d[0]
+		self.y_data = data3d[1]
+		self.z_data = data3d[2]
+		# self.x_data = [float(xtup[0]) for xtup in data3d]
+		# self.y_data = [float(xtup[1]) for xtup in data3d]
+		# self.z_data = [float(xtup[2]) for xtup in data3d]
 		
 		# Get line type
 		self.line_type = mpl_line.get_linestyle()
@@ -1069,13 +1083,14 @@ class Axis(Packable):
 		
 		# Find and mimic all lines (2d and 3d)
 		for idx, mpl_trace in enumerate(main_ax.lines):
-			self.traces[f'Tr{idx}'] = Trace(mpl_trace)
+			self.log.lowdebug(f"Mimicing trace: {mpl_trace}")
+			self.traces[f'Tr{idx}'] = Trace(mpl_trace, log=self.log)
 		
 		# Get lines for twin
 		idx_offset = len(self.traces)
 		if twin_ax is not None:
 			for idx, mpl_trace in enumerate(twin_ax.lines):
-				self.traces[f'Tr{idx+idx_offset}'] = Trace(mpl_trace, use_twin=True)
+				self.traces[f'Tr{idx+idx_offset}'] = Trace(mpl_trace, use_twin=True, log=self.log)
 		
 		self.title = str(main_ax.get_title())
 		
