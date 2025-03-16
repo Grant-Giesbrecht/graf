@@ -941,10 +941,7 @@ AXISTYPE_IMAGE = 2
 AXISTYPE_UNKNOWN = -1
 
 def get_axis_type(mpl_axis):
-	''' Returns a code for the type of data contained. 
-	
-	
-	'''
+	''' Returns a code for the type of data contained. '''
 	
 	# Check if lines is populated - 2D or 3D line plot
 	if len(mpl_axis.lines) > 0:

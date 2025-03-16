@@ -20,6 +20,6 @@ fig1.tight_layout()
 
 # Create GrAF
 g1 = Graf(fig=fig1)
-g1.save_hdf("ex5.graf")
+g1.save_hdf("ex6.graf")
 
 # plt.show()
