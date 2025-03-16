@@ -16,6 +16,8 @@ import matplotlib.colors as mcolors
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import mpl_toolkits.mplot3d as mpl3d
 from matplotlib.collections import QuadMesh
+import warnings
+
 
 ## TODO:
 # 1. Add error bars or shading support
@@ -711,7 +713,7 @@ class Trace(Packable):
 				
 	def mimic_2dline(self, mpl_line, use_twin=False):
 	
-		self.line_type = Trace.TRACE_LINE2D
+		self.trace_type = Trace.TRACE_LINE2D
 		self.use_yaxis_R = use_twin
 		
 		# Get line color
@@ -736,6 +738,7 @@ class Trace(Packable):
 		# Get x-data
 		self.x_data = [float(x) for x in mpl_line.get_xdata()]
 		self.y_data = [float(x) for x in mpl_line.get_ydata()]
+		self.z_data = []
 		
 		# Get line type
 		self.line_type = mpl_line.get_linestyle()
@@ -785,7 +788,7 @@ class Trace(Packable):
 	
 	def mimic_3dline(self, mpl_line):
 	
-		self.line_type = Trace.TRACE_LINE3D
+		self.trace_type = Trace.TRACE_LINE3D
 		self.use_yaxis_R = False
 		
 		# Get line color
@@ -855,14 +858,30 @@ class Trace(Packable):
 		self.display_name = str(mpl_line.get_label())
 	
 	def apply_to(self, ax, gstyle:GraphStyle):
-		
 		self.gs = gstyle
+		
+		if self.trace_type == Trace.TRACE_LINE2D:
+			self.apply_to_2dline(ax)
+		elif self.trace_type == Trace.TRACE_LINE3D:
+			self.apply_to_3dline(ax)
+		else:
+			self.warning(f"Unable to apply type: {self.trace_type}. Skipping.")
+			return
+	
+	def apply_to_2dline(self, ax):
 		
 		#TODO: Error check line type, marker type, and sizes
 		
 		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
 	
+	def apply_to_3dline(self, ax):
+		
+		#TODO: Error check line type, marker type, and sizes
+		
+		ax.add_line(mpl3d.art3d.Line3D(self.x_data, self.y_data, self.z_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
+	
 	def set_manifest(self):
+		self.manifest.append("trace_type")
 		self.manifest.append("use_yaxis_R")
 		self.manifest.append("x_data")
 		self.manifest.append("y_data")
@@ -968,7 +987,6 @@ class Scale(Packable):
 			ax.set_xlim([self.val_min, self.val_max])
 		elif scale_id == Scale.SCALE_ID_Y:
 			
-			
 			ax.set_yticks(self.tick_list)
 			ax.set_yticklabels(self.tick_label_list)
 			
@@ -977,6 +995,17 @@ class Scale(Packable):
 			else:
 				ax.set_ylabel(self.label)
 			ax.set_ylim([self.val_min, self.val_max])
+		
+		elif scale_id == Scale.SCALE_ID_Z:
+			
+			ax.set_zticks(self.tick_list)
+			ax.set_zticklabels(self.tick_label_list)
+			
+			if local_font is not None:
+				ax.set_zlabel(self.label, fontproperties=local_font[0], size=local_font[1])
+			else:
+				ax.set_zlabel(self.label)
+			ax.set_zlim([self.val_min, self.val_max])
 			
 
 # TODO: Merge these with Axis.AXIS_LINE2D etc.
@@ -1076,10 +1105,14 @@ class Axis(Packable):
 			self.y_axis_R = Scale(self.gs, valid=False, log=self.log)
 		if hasattr(main_ax, 'get_zlim'):
 			self.z_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_Z, log=self.log)
+			
+			# This only works for 3D
+			self.grid_on = ax._draw_grid
 		else:
 			self.z_axis = Scale(self.gs, valid=False, log=self.log)
-		self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
-		# self.traces = []
+			
+			# This only works for 2D
+			self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
 		
 		# Find and mimic all lines (2d and 3d)
 		for idx, mpl_trace in enumerate(main_ax.lines):
@@ -1145,7 +1178,7 @@ class Axis(Packable):
 		self.gs = gstyle
 		
 		# Check for missing twin axis
-		if self.y_axis_R is not None:
+		if self.y_axis_R.is_valid:
 			if twin_ax is None:
 				print(f"ERROR: Was not provided neccesary twin axis.")
 				twin_ax = ax.twinx()
@@ -1160,9 +1193,10 @@ class Axis(Packable):
 		# self.relative_size = []
 		self.x_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_X)
 		self.y_axis_L.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Y)
-		if self.y_axis_R is not None:
+		if self.y_axis_R.is_valid:
 			self.y_axis_R.apply_to(twin_ax, self.gs, scale_id=Scale.SCALE_ID_Y)
-		# self.z_axis = None
+		if self.z_axis.is_valid:
+			self.z_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Z)
 		ax.grid(self.grid_on)
 		
 		local_font = self.gs.title_font.to_tuple()
@@ -1455,17 +1489,27 @@ class Graf(Packable):
 			# Get subplot slices to apply to gs object
 			slc = self.axes[axkey].get_slice()
 			
-			# Create new axes, specifying position on GridSpec
-			new_ax = gen_fig.add_subplot(gs[slc[0], slc[1]])
-			
-			if self.axes[axkey].y_axis_R is None:
-				self.axes[axkey].apply_to(new_ax, self.style)
+			# CHeck if axis should be 2d or 3d
+			if self.axes[axkey].z_axis.is_valid: 
+				# Create new axes, specifying position on GridSpec
+				new_ax = gen_fig.add_subplot(gs[slc[0], slc[1]], projection='3d')
 			else:
+				# Create new axes, specifying position on GridSpec
+				new_ax = gen_fig.add_subplot(gs[slc[0], slc[1]])
+			
+			# Check for twin axes
+			if self.axes[axkey].y_axis_R.is_valid:
 				new_ax_twin = new_ax.twinx()
 				self.axes[axkey].apply_to(new_ax, self.style, twin_ax=new_ax_twin)
+			else:
+				self.axes[axkey].apply_to(new_ax, self.style)
 		
-		gen_fig.tight_layout()
-		
+		warnings.filterwarnings("error")
+		try:
+			gen_fig.tight_layout()
+		except UserWarning as uw:
+			self.log.warning(f"Tight layout was not applied.", detail=f"UserWarning: {uw}")
+		warnings.resetwarnings()
 		return gen_fig
 	
 	def save_hdf(self, filename:str):
