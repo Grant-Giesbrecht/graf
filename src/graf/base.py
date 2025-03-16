@@ -1504,12 +1504,17 @@ class Graf(Packable):
 			else:
 				self.axes[axkey].apply_to(new_ax, self.style)
 		
+		# Configure warnings to get caught like errors
 		warnings.filterwarnings("error")
 		try:
 			gen_fig.tight_layout()
 		except UserWarning as uw:
 			self.log.warning(f"Tight layout was not applied.", detail=f"UserWarning: {uw}")
+			
+		# Reset warning handling to standard
 		warnings.resetwarnings()
+		
+		# Return newly created figure
 		return gen_fig
 	
 	def save_hdf(self, filename:str):
