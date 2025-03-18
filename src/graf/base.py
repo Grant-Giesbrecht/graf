@@ -17,7 +17,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import mpl_toolkits.mplot3d as mpl3d
 from matplotlib.collections import QuadMesh
 import warnings
-
+import numpy as np
+from colorama import Fore, Style
 
 ## TODO:
 # 1. Add error bars or shading support
@@ -159,6 +160,7 @@ class Packable(ABC):
 	def __init__(self, log:plf.LogPile=None):
 		
 		if log is None:
+			print(f"{Fore.RED}Log object was not initialized in {type(self)} instance.!{Style.RESET_ALL}")
 			self.log = plf.LogPile(use_mutex=False)
 		else:
 			self.log = log
@@ -368,11 +370,17 @@ class GraphStyle(Packable):
 		self.obj_manifest.append("label_font")
 	
 class Surface(Packable):
-	''' Represents a trace that can be displayed on a set of axes'''
+	''' Represents a surface or image that can be displayed on a set of axes. 
+	Fundamentally what differentiates a surface from a Trace is if it has a single
+	independent axis or two.'''
 	
+	SURF_IMAGE = "SURF_IMAGE"
+	SURF_SURFACE = "SURF_SURFACE"
 	
 	def __init__(self, mpl_source=None, log:plf.LogPile=None):
 		super().__init__(log)
+		
+		self.surf_type = Surface.SURF_SURFACE
 		
 		self.uniform_grid = False
 		self.x_grid = []
@@ -402,6 +410,8 @@ class Surface(Packable):
 	
 	def mimic_quadmesh(self, mpl_source):
 		
+		self.surf_type = Surface.SURF_IMAGE
+		
 		# mpl QuadMesh does not support lines
 		self.line_type = "None"
 		
@@ -411,8 +421,10 @@ class Surface(Packable):
 		y_list = mpl_source._coordinates[:-1, 0, 1] + np.diff(mpl_source._coordinates[:, 0, 1])/2
 		
 		# Create grids from lists
-		self.x_grid, self.y_grid = np.meshgrid(x_list, y_list)
-		self.z_grid = mpl_source.get_array()
+		_xg, _yg = np.meshgrid(x_list, y_list)
+		self.x_grid = _xg.tolist()
+		self.y_grid = _yg.tolist()
+		self.z_grid = mpl_source.get_array().tolist()
 		
 		# Read transparency layer
 		self.alpha = mpl_source.get_alpha()
@@ -643,9 +655,19 @@ class Surface(Packable):
 		
 		self.gs = gstyle
 		
+		if self.surf_type == Surface.SURF_IMAGE:
+			self._apply_to_image(ax)
+		else:
+			self.log.error(f"")
+	
+	def _apply_to_image(self, ax):
+		
 		ax.pcolormesh(self.x_grid, self.y_grid, self.z_grid, cmap=mcolors.ListedColormap(self.cmap), alpha=self.alpha, antialiased=self.antialias)
 	
 	def set_manifest(self):
+		
+		self.manifest.append("surf_type")
+		
 		self.manifest.append("uniform_grid")
 		self.manifest.append("x_grid")
 		self.manifest.append("y_grid")
@@ -657,6 +679,8 @@ class Surface(Packable):
 		
 		self.manifest.append("line_color")
 		self.manifest.append("alpha")
+		
+		self.manifest.append("antialias")
 
 class Trace(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
@@ -665,7 +689,6 @@ class Trace(Packable):
 	TRACE_LINE3D = "TRACE_LINE3D"
 	TRACE_COLOR = "TRACE_COLOR"
 	TRACE_SURFACE = "TRACE_SURFACE"
-	
 	
 	def __init__(self, mpl_line=None, mpl_img=None, mpl_surf=None, use_twin=False, log:plf.LogPile=None):
 		super().__init__(log)
@@ -1026,7 +1049,8 @@ def get_axis_type(mpl_axis):
 		return AXISTYPE_IMAGE
 
 class Axis(Packable):
-	'''' Defines a set of axes, including the x-y-(z), grid lines, etc.'''
+	'''' Defines a set of axes, including the x-y-(z), grid lines, etc. and contains
+	data to display on the axes.'''
 	
 	AXIS_LINE2D = "AXIS_LINE2D"
 	AXIS_LINE3D = "AXIS_LINE3D"
@@ -1036,7 +1060,8 @@ class Axis(Packable):
 	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None, log:plf.LogPile=None): #:matplotlib.axes._axes.Axes=None):
 		super().__init__(log)
 		
-		self.gs = gs
+		self.gs = gs # Copy of GraphStyle in Graf class - do not add to manifest
+		
 		self.axis_type = Axis.AXIS_LINE2D
 		self.position = [0, 0] # Position, as row-column from top-left
 		self.span = [1, 1] # Row and column span of axes
@@ -1055,6 +1080,7 @@ class Axis(Packable):
 			self.mimic(ax, twin=twin_ax)
 	
 	def set_manifest(self):
+		self.manifest.append("axis_type")
 		self.manifest.append("position")
 		self.manifest.append("span")
 		self.manifest.append("relative_size")
@@ -1064,6 +1090,7 @@ class Axis(Packable):
 		self.obj_manifest.append("z_axis")
 		self.manifest.append("grid_on")
 		self.dict_manifest["traces"] = Trace()
+		self.dict_manifest["surfaces"] = Surface()
 		self.manifest.append("title")
 	
 	def mimic(self, ax, twin=None):
@@ -1071,13 +1098,13 @@ class Axis(Packable):
 		#TODO: Detect axis type
 		if (len(ax.collections) > 0) or (len(ax.images) > 0):
 			self.axis_type = Axis.AXIS_IMAGE
-			print(f"Copying image")
-			self.mimic_image(ax)
+			self.log.debug(f"Mimicing Surface object")
+			self._mimic_surface(ax)
 		else:
-			print("Copying line")
-			self.mimic_line(ax, twin=twin)
+			self.log.debug(f"Mimicing Trace object")
+			self._mimic_line(ax, twin=twin)
 	
-	def mimic_line(self, ax, twin=None):
+	def _mimic_line(self, ax, twin=None):
 		
 		# Identify main and twin axis
 		if twin is None:
@@ -1112,7 +1139,10 @@ class Axis(Packable):
 			self.z_axis = Scale(self.gs, valid=False, log=self.log)
 			
 			# This only works for 2D
-			self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
+			if len(main_ax.xaxis.get_gridlines()) == 0:
+				self.grid_on = False
+			else:
+				self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
 		
 		# Find and mimic all lines (2d and 3d)
 		for idx, mpl_trace in enumerate(main_ax.lines):
@@ -1137,24 +1167,31 @@ class Axis(Packable):
 		self.position = [row_start, col_start]
 		self.span = [row_stop-row_start, col_stop-col_start]
 	
-	def mimic_image(self, ax):
+	def _mimic_surface(self, ax):
 		
 		# self.relative_size = []
-		self.x_axis = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_X)
-		self.y_axis_L = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_Y)
-		self.y_axis_R = Scale(self.gs, valid=False)
-		if hasattr(ax, 'get_zlim'): #TODO: Leaving for hybrid. Maybe good to remove.
-			self.z_axis = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_Z)
+		self.x_axis = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_X, log=self.log)
+		self.y_axis_L = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_Y, log=self.log)
+		self.y_axis_R = Scale(self.gs, valid=False, log=self.log)
+		if hasattr(ax, 'get_zlim'):
+			self.z_axis = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_Z, log=self.log)
 		else:
-			self.z_axis = Scale(self.gs, valid=False)
-		self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
+			self.z_axis = Scale(self.gs, valid=False, log=self.log)
 		
-		# Find and mimic all images
+		# Check if grid is enabled
+		if len(ax.xaxis.get_gridlines()) == 0:
+			self.grid_on = False
+		else:
+			self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
+		
+		# Find and mimic all images (AxesImage)
 		for idx, mpl_image in enumerate(ax.images):
-			self.surfaces[f'Sf{idx}'] = Surface(mpl_image)
+			self.surfaces[f'Sf{idx}'] = Surface(mpl_image, log=self.log)
 		
-		# for idx, mpl_image in enumerate(ax.collections):
-		# 	self.surfaces[f'Sf{idx}'] = 
+		# Find and mimic all "collections" (QuadMesh and Poly3DCollection)
+		idx_offset = len(self.surfaces)
+		for idx, mpl_coll in enumerate(ax.collections):
+			self.surfaces[f'Sf{idx+idx_offset}'] = Surface(mpl_coll, log=self.log)
 		
 		# Get subplot position
 		col_start = ax.get_subplotspec().colspan.start

@@ -14,7 +14,7 @@ ax1a = fig1.add_subplot(gs[0, 0])
 
 # Display the data using pcolormesh
 c = ax1a.pcolormesh(X, Y, Z, cmap='hot') 
-fig1.colorbar(c, ax=ax1a)  # Optional: Add a colorbar
+# fig1.colorbar(c, ax=ax1a)  # Optional: Add a colorbar
 
 fig1.tight_layout()
 
@@ -22,4 +22,7 @@ fig1.tight_layout()
 g1 = Graf(fig=fig1)
 g1.save_hdf("ex6.graf")
 
-# plt.show()
+g2 = Graf("ex6.graf")
+fig2 = g2.to_fig()
+
+plt.show()
