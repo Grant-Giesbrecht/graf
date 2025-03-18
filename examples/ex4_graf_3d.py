@@ -17,7 +17,6 @@ ax.set_xlabel("X-axis")
 ax.set_ylabel("Y-axis")
 ax.set_zlabel("Z-axis")
 
-
 graf1 = Graf(fig=fig1, log=log)
 graf1.save_hdf("ex4_line3d.graf")
 

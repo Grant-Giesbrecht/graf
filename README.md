@@ -1,8 +1,7 @@
 <h1 align="center">
-<img src="https://github.com/Grant-Giesbrecht/graf/blob/main/docs/images/graf_banner.png?raw=True" width="800">
+<img src="https://github.com/Grant-Giesbrecht/graf/blob/main/docs/images/graf_logo.png?raw=True" width="600">
 </h1><br>
 
-## So what is it?
 GrAF is a file format which allows you to save graphs, including the data and format settings. 
 
 ## Where does this fit compared to other formats?

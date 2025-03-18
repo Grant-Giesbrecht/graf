@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from graf.base import Graf
 
 import matplotlib.cbook as cbook
 import matplotlib.cm as cm
@@ -18,7 +19,7 @@ Z = (Z1 - Z2) * 2
 
 fig, ax0 = plt.subplots()
 im = ax0.imshow(Z, interpolation='bilinear', cmap=cm.RdYlGn, origin='lower', extent=[-3, 3, -3, 3], vmax=abs(Z).max(), vmin=-abs(Z).max())
-fig.colorbar(im)
+# fig.colorbar(im)
 
 A = np.random.rand(5, 5)
 
@@ -28,10 +29,11 @@ for ax, interp in zip(axs1, ['nearest', 'bilinear', 'bicubic']):
     ax.set_title(interp.capitalize())
     ax.grid(True)
 
+g1 = Graf(fig=fig)
+g1.save_hdf("ex7.graf")
 
-# Plots from imshow will appear in ax0.images
-print(ax0.images)
-print(type(ax0.images)) # Type will be AxesImage
-
+g2 = Graf()
+g2.load_hdf("ex7.graf")
+fig2 = g2.to_fig()
 
 plt.show()

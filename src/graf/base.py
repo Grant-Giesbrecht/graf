@@ -16,6 +16,7 @@ import matplotlib.colors as mcolors
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import mpl_toolkits.mplot3d as mpl3d
 from matplotlib.collections import QuadMesh
+from matplotlib.image import AxesImage
 import warnings
 import numpy as np
 from colorama import Fore, Style
@@ -406,11 +407,13 @@ class Surface(Packable):
 		if isinstance(mpl_source, Poly3DCollection):
 			self.mimic_poly3d(mpl_source)
 		elif isinstance(mpl_source, QuadMesh):
-			self.mimic_quadmesh(mpl_source)
+			self._mimic_quadmesh(mpl_source)
+		elif isinstance(mpl_source, AxesImage):
+			self._mimic_axesiamge(mpl_source)
 		else:
 			print(f"WARNING: Unrecognized data type {type(mpl_source)} will be ignored.")
 	
-	def mimic_quadmesh(self, mpl_source):
+	def _mimic_quadmesh(self, mpl_source):
 		
 		self.surf_type = Surface.SURF_IMAGE
 		
@@ -418,7 +421,7 @@ class Surface(Packable):
 		self.line_type = "None"
 		
 		# Get X and Y coordinates
-		self.uniform_grid = True # This x and y retrieval method assumes a uniform grid
+		self.uniform_grid = True # This x and y retrieval method assumes a uniform grid, however quadmesh objects CAN have nonuniform grids! TODO: Generalize this!
 		x_list = mpl_source._coordinates[0,:-1,0] + np.diff(mpl_source._coordinates[0,:,0])/2
 		y_list = mpl_source._coordinates[:-1, 0, 1] + np.diff(mpl_source._coordinates[:, 0, 1])/2
 		
@@ -427,6 +430,38 @@ class Surface(Packable):
 		self.x_grid = _xg.tolist()
 		self.y_grid = _yg.tolist()
 		self.z_grid = mpl_source.get_array().tolist()
+		
+		# Read transparency layer
+		self.alpha = mpl_source.get_alpha()
+		if self.alpha is None:
+			self.alpha = 1
+		
+		# Get colormap
+		self.cmap = sample_colormap(mpl_source.get_cmap(), N=30) #TODO: Make N adjustable with a flag
+	
+	def _mimic_axesiamge(self, mpl_source):
+		''' Mimics a matplotlib AxesImage object (produced by imshow()).'''
+		
+		self.surf_type = Surface.SURF_IMAGE
+		
+		# # mpl QuadMesh does not support lines
+		# self.line_type = "None"
+		
+		# Get Z data - dimensions will be used to find X and Y
+		zg_raw = mpl_source.get_array()
+		self.z_grid = zg_raw.tolist()
+		
+		# Get X and Y coordinates
+		x_min, x_max, y_min, y_max = mpl_source.get_extent()
+		x_list = np.linspace(x_min, x_max, zg_raw.shape[1])
+		y_list = np.linspace(y_min, y_max, zg_raw.shape[0])
+		
+		self.uniform_grid = True # Imshow requires a uniform grid
+		
+		# Create grids from lists
+		_xg, _yg = np.meshgrid(x_list, y_list)
+		self.x_grid = _xg.tolist()
+		self.y_grid = _yg.tolist()
 		
 		# Read transparency layer
 		self.alpha = mpl_source.get_alpha()
@@ -511,147 +546,6 @@ class Surface(Packable):
 	# 	self.marker_size = mpl_line.get_markersize()
 	# 	self.line_width = mpl_line.get_linewidth()
 	# 	self.display_name = str(mpl_line.get_label())
-
-	# def mimic_2dline(self, mpl_line, use_twin=False):
-	
-	# 	self.line_type = Trace.TRACE_LINE2D
-	# 	self.use_yaxis_R = use_twin
-		
-	# 	# Get line color
-	# 	self.line_color = mcolors.to_rgb(mpl_line.get_color())
-	# 	# if type(mpl_line.get_color()) == tuple:
-	# 	# 	self.line_color = mpl_line.get_color()
-	# 	# else:
-	# 	# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
-		
-	# 	# Get transparency
-	# 	self.alpha = mpl_line.get_alpha()
-	# 	if self.alpha is None:
-	# 		self.alpha = 1
-		
-	# 	# Get marker color
-	# 	self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
-	# 	# if type(mpl_line.get_markerfacecolor()) == tuple:
-	# 	# 	self.marker_color = mpl_line.get_markerfacecolor()
-	# 	# else:
-	# 	# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
-		
-	# 	# Get x-data
-	# 	self.x_data = [float(x) for x in mpl_line.get_xdata()]
-	# 	self.y_data = [float(x) for x in mpl_line.get_ydata()]
-		
-	# 	# Get line type
-	# 	self.line_type = mpl_line.get_linestyle()
-	# 	if self.line_type not in LINE_TYPES:
-	# 		self.line_type = LINE_TYPES[0]
-		
-	# 	# Get marker
-	# 	mpl_marker_code = mpl_line.get_marker().lower()
-	# 	match mpl_marker_code:
-	# 		case '.':
-	# 			self.marker_type = '.'
-	# 		case '+':
-	# 			self.marker_type = '+'
-	# 		case '^':
-	# 			self.marker_type = '^'
-	# 		case 'v':
-	# 			self.marker_type = 'v'
-	# 		case 's':
-	# 			self.marker_type = '[]'
-	# 		case 'o':
-	# 			self.marker_type = 'o'
-	# 		case None:
-	# 			self.marker_type = 'None'
-	# 		case 'none':
-	# 			self.marker_type = 'None'
-	# 		case '*':
-	# 			self.marker_type = '*'
-	# 		case '_':
-	# 			self.marker_type = '_'
-	# 		case '|':
-	# 			self.marker_type = '|'
-	# 		case 'x':
-	# 			self.marker_type = 'x'
-	# 		case _:
-	# 			self.marker_type = '.'
-		
-	# 	# Get marker
-	# 	if self.marker_type == None:
-	# 		self.marker_type = "None"
-	# 	if self.marker_type not in MARKER_TYPES:
-	# 		self.marker_type = MARKER_TYPES[0]
-		
-	# 	#TODO: Normalize these to one somehow?
-	# 	self.marker_size = mpl_line.get_markersize()
-	# 	self.line_width = mpl_line.get_linewidth()
-	# 	self.display_name = str(mpl_line.get_label())
-	
-	# def mimic_3dline(self, mpl_line):
-	
-	# 	self.line_type = Trace.TRACE_LINE3D
-		
-	# 	# Get line color
-	# 	self.line_color = mcolors.to_rgb(mpl_line.get_color())
-	# 	# if type(mpl_line.get_color()) == tuple:
-	# 	# 	self.line_color = mpl_line.get_color()
-	# 	# else:
-	# 	# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
-		
-	# 	# Get transparency
-	# 	self.alpha = mpl_line.get_alpha()
-	# 	if self.alpha is None:
-	# 		self.alpha = 1
-		
-	# 	# Get marker color
-	# 	self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
-	# 	# if type(mpl_line.get_markerfacecolor()) == tuple:
-	# 	# 	self.marker_color = mpl_line.get_markerfacecolor()
-	# 	# else:
-	# 	# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
-		
-	# 	# Get all data
-	# 	data3d = mpl_line.get_data_3d()
-		
-	# 	# Unpack into x, y and z
-	# 	self.x_data = [float(xtup[0]) for xtup in data3d]
-	# 	self.y_data = [float(xtup[1]) for xtup in data3d]
-	# 	self.z_data = [float(xtup[2]) for xtup in data3d]
-		
-	# 	# Get line type
-	# 	self.line_type = mpl_line.get_linestyle()
-	# 	if self.line_type not in LINE_TYPES:
-	# 		self.line_type = LINE_TYPES[0]
-		
-	# 	# Get marker
-	# 	mpl_marker_code = mpl_line.get_marker().lower()
-	# 	match mpl_marker_code:
-	# 		case '.':
-	# 			self.marker_type = '.'
-	# 		case '+':
-	# 			self.marker_type = '+'
-	# 		case '^':
-	# 			self.marker_type = '^'
-	# 		case 'v':
-	# 			self.marker_type = 'v'
-	# 		case 's':
-	# 			self.marker_type = 's'
-	# 		case None:
-	# 			self.marker_type = 'None'
-	# 		case 'none':
-	# 			self.marker_type = 'None'
-	# 		case _:
-	# 			self.marker_type = '.'
-		
-	# 	# Get marker
-	# 	if self.marker_type == None:
-	# 		self.marker_type = "None"
-	# 	if self.marker_type not in MARKER_TYPES:
-	# 		self.marker_type = MARKER_TYPES[0]
-		
-	# 	#TODO: Normalize these to one somehow?
-	# 	self.marker_size = mpl_line.get_markersize()
-	# 	self.line_width = mpl_line.get_linewidth()
-	# 	self.display_name = str(mpl_line.get_label())
 	
 	def apply_to(self, ax, gstyle:GraphStyle):
 		
@@ -660,7 +554,7 @@ class Surface(Packable):
 		if self.surf_type == Surface.SURF_IMAGE:
 			self._apply_to_image(ax)
 		else:
-			self.log.error(f"")
+			self.log.error(f"Surface.apply_to(): Unrecognized surface type {self.surf_type}")
 	
 	def _apply_to_image(self, ax):
 		
