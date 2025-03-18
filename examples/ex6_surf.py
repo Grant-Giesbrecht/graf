@@ -22,7 +22,8 @@ fig1.tight_layout()
 g1 = Graf(fig=fig1)
 g1.save_hdf("ex6.graf")
 
-g2 = Graf("ex6.graf")
+g2 = Graf()
+g2.load_hdf("ex6.graf")
 fig2 = g2.to_fig()
 
 plt.show()

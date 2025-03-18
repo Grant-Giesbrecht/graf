@@ -382,6 +382,8 @@ class Surface(Packable):
 		
 		self.surf_type = Surface.SURF_SURFACE
 		
+		self.cmap = []
+		
 		self.uniform_grid = False
 		self.x_grid = []
 		self.y_grid = []
@@ -667,6 +669,7 @@ class Surface(Packable):
 	def set_manifest(self):
 		
 		self.manifest.append("surf_type")
+		self.manifest.append("cmap")
 		
 		self.manifest.append("uniform_grid")
 		self.manifest.append("x_grid")
