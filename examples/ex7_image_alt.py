@@ -19,7 +19,6 @@ Z = (Z1 - Z2) * 2
 
 fig, ax0 = plt.subplots()
 im = ax0.imshow(Z, interpolation='bilinear', cmap=cm.RdYlGn, origin='lower', extent=[-3, 3, -3, 3], vmax=abs(Z).max(), vmin=-abs(Z).max())
-# fig.colorbar(im)
 
 A = np.random.rand(5, 5)
 
