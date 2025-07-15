@@ -72,6 +72,33 @@ def sample_colormap(cmap_name:str=None, listed_cmap:mcolors.ListedColormap=None,
 	
 	return colors
 
+class AutoColorMap:
+	
+	def __init__(self, color_data:list, N, log:plf.LogPile):
+		
+		self.N = N
+		self.color_data = color_data
+		
+		self.idx = 0
+		
+		self.log = log
+	
+	def __call__(self):
+		try:
+			cd = self.color_data[self.idx]
+			self.idx += 1
+			if self.idx >= self.N:
+				self.idx = 0
+				self.log.debug(f"Colormap auto-reset.")
+		except:
+			self.idx = 0
+			cd = (0, 0, 0)
+		
+		return cd
+	
+	def reset(self):
+		self.idx = 0
+
 def load_fonts(conf_file:str):
 	
 	# Read conf data
