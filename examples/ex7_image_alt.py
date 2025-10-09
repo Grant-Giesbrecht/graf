@@ -31,8 +31,15 @@ for ax, interp in zip(axs1, ['nearest', 'bilinear', 'bicubic']):
 g1 = Graf(fig=fig)
 g1.save_hdf("ex7.graf")
 
+g1b = Graf(fig=fig1)
+g1b.save_hdf("ex7_fig2.graf")
+
 g2 = Graf()
 g2.load_hdf("ex7.graf")
 fig2 = g2.to_fig()
+
+g3 = Graf()
+g3.load_hdf("ex7_fig2.graf")
+fig4 = g3.to_fig()
 
 plt.show()
