@@ -277,11 +277,11 @@ class Surface(Packable):
 	
 	def __init__(self, mpl_source=None, log:plf.LogPile=None):
 		super().__init__(log)
-		
+
 		self.surf_type = Surface.SURF_SURFACE
-		
+
 		self.cmap = []
-		
+
 		self.uniform_grid = False
 		self.x_grid = []
 		self.y_grid = []
@@ -290,12 +290,18 @@ class Surface(Packable):
 		self.line_width = 1
 		self.display_name = ""
 		self.include_in_legend = True
-		
+
 		self.line_color = (1, 0, 0)
 		self.alpha = 1
-		
+
 		self.antialias = False
-		
+
+		self.has_colorbar = False
+		self.colorbar_label = ""
+		self.colorbar_orientation = "vertical"
+		self.colorbar_ticks = []
+		self.colorbar_tick_labels = []
+
 		if mpl_source is not None:
 			self.mimic(mpl_source=mpl_source)
 	
@@ -310,31 +316,56 @@ class Surface(Packable):
 		else:
 			print(f"WARNING: Unrecognized data type {type(mpl_source)} will be ignored.")
 	
+	def _mimic_colorbar(self, mpl_source):
+		''' Captures colorbar properties if the mappable has an associated colorbar. '''
+		cb = getattr(mpl_source, 'colorbar', None)
+		if cb is None:
+			return
+		self.has_colorbar = True
+		self.colorbar_orientation = cb.orientation
+		if cb.orientation == 'vertical':
+			self.colorbar_label = cb.ax.get_ylabel()
+			self.colorbar_tick_labels = [t.get_text() for t in cb.ax.get_yticklabels()]
+		else:
+			self.colorbar_label = cb.ax.get_xlabel()
+			self.colorbar_tick_labels = [t.get_text() for t in cb.ax.get_xticklabels()]
+		try:
+			self.colorbar_ticks = [float(t) for t in cb.get_ticks()]
+		except Exception:
+			self.colorbar_ticks = []
+
 	def _mimic_quadmesh(self, mpl_source):
-		
+
 		self.surf_type = Surface.SURF_IMAGE
-		
-		# mpl QuadMesh does not support lines
 		self.line_type = "None"
-		
-		# Get X and Y coordinates
-		self.uniform_grid = True # This x and y retrieval method assumes a uniform grid, however quadmesh objects CAN have nonuniform grids! TODO: Generalize this!
-		x_list = mpl_source._coordinates[0,:-1,0] + np.diff(mpl_source._coordinates[0,:,0])/2
-		y_list = mpl_source._coordinates[:-1, 0, 1] + np.diff(mpl_source._coordinates[:, 0, 1])/2
-		
-		# Create grids from lists
-		_xg, _yg = np.meshgrid(x_list, y_list)
-		self.x_grid = _xg.tolist()
-		self.y_grid = _yg.tolist()
+
+		# _coordinates has shape (M+1, N+1, 2): the corner positions of every quad cell.
+		# Storing corners directly supports both uniform and non-uniform grids.
+		coords = mpl_source._coordinates
+		x_corners = coords[:, :, 0]  # (M+1, N+1)
+		y_corners = coords[:, :, 1]  # (M+1, N+1)
+
+		# A grid is uniform when x varies only with column and y only with row
+		self.uniform_grid = (
+			np.allclose(x_corners, x_corners[0:1, :]) and
+			np.allclose(y_corners, y_corners[:, 0:1])
+		)
+
+		# Store corners — pcolormesh accepts (M+1)×(N+1) corner arrays directly
+		self.x_grid = x_corners.tolist()
+		self.y_grid = y_corners.tolist()
 		self.z_grid = mpl_source.get_array().tolist()
-		
-		# Read transparency layer
+
+		# Alpha
 		self.alpha = mpl_source.get_alpha()
 		if self.alpha is None:
 			self.alpha = 1
-		
-		# Get colormap
-		self.cmap = sample_colormap(mpl_source.get_cmap(), N=30) #TODO: Make N adjustable with a flag
+
+		# Colormap
+		self.cmap = sample_colormap(mpl_source.get_cmap(), N=30)
+
+		# Colorbar
+		self._mimic_colorbar(mpl_source)
 	
 	def _mimic_axesiamge(self, mpl_source):
 		''' Mimics a matplotlib AxesImage object (produced by imshow()).'''
@@ -360,14 +391,17 @@ class Surface(Packable):
 		self.x_grid = _xg.tolist()
 		self.y_grid = _yg.tolist()
 		
-		# Read transparency layer
+		# Alpha
 		self.alpha = mpl_source.get_alpha()
 		if self.alpha is None:
 			self.alpha = 1
-		
-		# Get colormap
-		self.cmap = sample_colormap(mpl_source.get_cmap(), N=30) #TODO: Make N adjustable with a flag
-	
+
+		# Colormap
+		self.cmap = sample_colormap(mpl_source.get_cmap(), N=30)
+
+		# Colorbar
+		self._mimic_colorbar(mpl_source)
+
 	def mimic_poly3d(self, mpl_source):
 		''' Mimics a matplotlib Poly3DCollection (produced by ax.plot_surface()).
 
@@ -442,21 +476,32 @@ class Surface(Packable):
 			self.line_width = float(lw[0]) if hasattr(lw, '__len__') else float(lw)
 		except Exception:
 			pass
-	
+
+		# Colorbar
+		self._mimic_colorbar(mpl_source)
+
 	def apply_to(self, ax, gstyle:GraphStyle):
+		''' Applies this surface to the given axes. Returns the matplotlib mappable
+		so the caller can attach a colorbar if needed. '''
 
 		self.gs = gstyle
 
 		if self.surf_type == Surface.SURF_IMAGE:
-			self._apply_to_image(ax)
+			return self._apply_to_image(ax)
 		elif self.surf_type == Surface.SURF_SURFACE:
-			self._apply_to_surface(ax)
+			return self._apply_to_surface(ax)
 		else:
 			self.log.error(f"Surface.apply_to(): Unrecognized surface type {self.surf_type}")
+			return None
 
 	def _apply_to_image(self, ax):
-
-		ax.pcolormesh(self.x_grid, self.y_grid, self.z_grid, cmap=mcolors.ListedColormap(self.cmap), alpha=self.alpha, antialiased=self.antialias)
+		x = np.array(self.x_grid)
+		y = np.array(self.y_grid)
+		z = np.array(self.z_grid)
+		cmap = mcolors.ListedColormap(self.cmap)
+		# shading='auto' correctly handles both old .graf files (center coordinates,
+		# x.shape == z.shape) and new ones (corner coordinates, x.shape == z.shape+1)
+		return ax.pcolormesh(x, y, z, cmap=cmap, shading='auto', alpha=self.alpha, antialiased=self.antialias)
 
 	def _apply_to_surface(self, ax):
 		''' Reconstructs a 3D surface via ax.plot_surface(). '''
@@ -465,13 +510,25 @@ class Surface(Packable):
 		Y = np.array(self.y_grid)
 		Z = np.array(self.z_grid)
 		cmap = mcolors.ListedColormap(self.cmap)
-		ax.plot_surface(X, Y, Z, cmap=cmap, alpha=self.alpha, linewidth=self.line_width)
+		return ax.plot_surface(X, Y, Z, cmap=cmap, alpha=self.alpha, linewidth=self.line_width)
+
+	def apply_colorbar(self, fig, mappable, parent_ax):
+		''' Attaches a colorbar to the figure using the stored colorbar properties. '''
+		if not self.has_colorbar or mappable is None:
+			return
+		cb = fig.colorbar(mappable, ax=parent_ax, orientation=self.colorbar_orientation)
+		if self.colorbar_orientation == 'vertical':
+			cb.ax.set_ylabel(self.colorbar_label)
+		else:
+			cb.ax.set_xlabel(self.colorbar_label)
+		if self.colorbar_ticks:
+			cb.set_ticks(self.colorbar_ticks)
 	
 	def set_manifest(self):
-		
+
 		self.manifest.append("surf_type")
 		self.manifest.append("cmap")
-		
+
 		self.manifest.append("uniform_grid")
 		self.manifest.append("x_grid")
 		self.manifest.append("y_grid")
@@ -480,11 +537,17 @@ class Surface(Packable):
 		self.manifest.append("line_width")
 		self.manifest.append("display_name")
 		self.manifest.append("include_in_legend")
-		
+
 		self.manifest.append("line_color")
 		self.manifest.append("alpha")
-		
+
 		self.manifest.append("antialias")
+
+		self.manifest.append("has_colorbar")
+		self.manifest.append("colorbar_label")
+		self.manifest.append("colorbar_orientation")
+		self.manifest.append("colorbar_ticks")
+		self.manifest.append("colorbar_tick_labels")
 
 class Trace(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
@@ -999,10 +1062,15 @@ class Axis(Packable):
 		for idx, mpl_image in enumerate(ax.images):
 			self.surfaces[f'Sf{idx}'] = Surface(mpl_image, log=self.log)
 
-		# Find and mimic all "collections" (QuadMesh and Poly3DCollection)
-		idx_offset = len(self.surfaces)
-		for idx, mpl_coll in enumerate(ax.collections):
-			self.surfaces[f'Sf{idx+idx_offset}'] = Surface(mpl_coll, log=self.log)
+		# Find and mimic all recognised collections (QuadMesh and Poly3DCollection).
+		# Other collection types (e.g. LineCollection from colorbar tick marks) are skipped.
+		sf_idx = len(self.surfaces)
+		for mpl_coll in ax.collections:
+			if not isinstance(mpl_coll, (QuadMesh, Poly3DCollection)):
+				self.log.warning(f"Skipping unrecognised collection type: {type(mpl_coll).__name__}")
+				continue
+			self.surfaces[f'Sf{sf_idx}'] = Surface(mpl_coll, log=self.log)
+			sf_idx += 1
 
 		# Get subplot position
 		col_start = ax.get_subplotspec().colspan.start
@@ -1014,12 +1082,12 @@ class Axis(Packable):
 		self.position = [row_start, col_start]
 		self.span = [row_stop-row_start, col_stop-col_start]
 	
-	def apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
-		
+	def apply_to(self, ax, gstyle:GraphStyle, twin_ax=None, fig=None):
+
 		if self.axis_type == Axis.AXIS_LINE2D or self.axis_type == Axis.AXIS_LINE3D:
 			self.line_apply_to(ax, gstyle=gstyle, twin_ax=twin_ax)
 		else:
-			self.image_apply_to(ax, gstyle=gstyle)
+			self.image_apply_to(ax, gstyle=gstyle, fig=fig)
 	
 	def line_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
 		
@@ -1053,12 +1121,14 @@ class Axis(Packable):
 		else:
 			ax.set_title(self.title)
 	
-	def image_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
+	def image_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None, fig=None):
 
 		self.gs = gstyle
 
 		for sf in self.surfaces.keys():
-			self.surfaces[sf].apply_to(ax, self.gs)
+			mappable = self.surfaces[sf].apply_to(ax, self.gs)
+			if fig is not None:
+				self.surfaces[sf].apply_colorbar(fig, mappable, ax)
 
 		self.x_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_X)
 		self.y_axis_L.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Y)
@@ -1165,7 +1235,12 @@ class Graf(Packable):
 		sole_axes = [] # This is a list of axes
 		twin_axes = [] # This is a list of lists of axes. Each sub-list contains a list of shared-axes
 		for ax in fig.get_axes():
-			
+
+			# Skip colorbar axes — they are stored per-surface, not as independent axes
+			if ax.get_label() == '<colorbar>':
+				self.log.lowdebug(f"Skipping colorbar axis.")
+				continue
+
 			# Check if axis is twinned
 			if has_twinx(ax):
 				self.log.lowdebug(f"Adding axis ({ax}) to twin-axes.")
@@ -1356,9 +1431,9 @@ class Graf(Packable):
 			# Check for twin axes
 			if self.axes[axkey].y_axis_R.is_valid:
 				new_ax_twin = new_ax.twinx()
-				self.axes[axkey].apply_to(new_ax, self.style, twin_ax=new_ax_twin)
+				self.axes[axkey].apply_to(new_ax, self.style, twin_ax=new_ax_twin, fig=gen_fig)
 			else:
-				self.axes[axkey].apply_to(new_ax, self.style)
+				self.axes[axkey].apply_to(new_ax, self.style, fig=gen_fig)
 		
 		# Configure warnings to get caught like errors
 		warnings.filterwarnings("error")
