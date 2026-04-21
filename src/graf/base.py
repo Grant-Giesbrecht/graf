@@ -16,6 +16,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import mpl_toolkits.mplot3d as mpl3d
 from matplotlib.collections import QuadMesh
 from matplotlib.image import AxesImage
+from matplotlib.container import ErrorbarContainer
 import warnings
 import numpy as np
 from colorama import Fore, Style
@@ -170,6 +171,25 @@ def hexstr_to_rgb(hexstr:str):
 	''' Credit: https://stackoverflow.com/questions/29643352/converting-hex-to-rgb-value-in-python John1024'''
 	hexstr = hexstr.lstrip('#')
 	return tuple(int(hexstr[i:i+2], 16)/255 for i in (0, 2, 4))
+
+def _parse_marker(mpl_marker_code) -> str:
+	''' Converts a matplotlib marker code to a GrAF marker type string. '''
+	if mpl_marker_code is None:
+		return 'None'
+	code = str(mpl_marker_code).lower()
+	match code:
+		case '.': return '.'
+		case '+': return '+'
+		case '^': return '^'
+		case 'v': return 'v'
+		case 's': return '[]'
+		case 'o': return 'o'
+		case 'none': return 'None'
+		case '*': return '*'
+		case '_': return '_'
+		case '|': return '|'
+		case 'x': return 'x'
+		case _: return '.'
 
 def has_twinx(ax):
 	''' Checks if a matplotlib axis has a twin-axis (specifically a 2nd Y that shares a common X). '''
@@ -574,9 +594,22 @@ class Trace(Packable):
 		
 		self.line_color = (1, 0, 0)
 		self.alpha = 1
-		
+
 		self.marker_color = (1, 0, 0)
-		
+
+		# Error bar fields
+		self.has_error_bars = False
+		self.x_err_neg = []
+		self.x_err_pos = []
+		self.y_err_neg = []
+		self.y_err_pos = []
+		self.err_line_color = (0.5, 0.5, 0.5)
+		self.err_line_width = 1.0
+		self.err_cap_size = 3.0
+		self.err_cap_color = (0.5, 0.5, 0.5)
+		self.err_cap_width = 1.0
+		self.err_cap_visible = True
+
 		if mpl_line is not None:
 			
 			self.mimic(mpl_line=mpl_line, use_twin=use_twin)
@@ -636,46 +669,15 @@ class Trace(Packable):
 			self.line_type = LINE_TYPES[0]
 		
 		# Get marker
-		mpl_marker_code = mpl_line.get_marker().lower()
-		match mpl_marker_code:
-			case '.':
-				self.marker_type = '.'
-			case '+':
-				self.marker_type = '+'
-			case '^':
-				self.marker_type = '^'
-			case 'v':
-				self.marker_type = 'v'
-			case 's':
-				self.marker_type = '[]'
-			case 'o':
-				self.marker_type = 'o'
-			case None:
-				self.marker_type = 'None'
-			case 'none':
-				self.marker_type = 'None'
-			case '*':
-				self.marker_type = '*'
-			case '_':
-				self.marker_type = '_'
-			case '|':
-				self.marker_type = '|'
-			case 'x':
-				self.marker_type = 'x'
-			case _:
-				self.marker_type = '.'
-		
-		# Get marker
-		if self.marker_type == None:
-			self.marker_type = "None"
+		self.marker_type = _parse_marker(mpl_line.get_marker())
 		if self.marker_type not in MARKER_TYPES:
 			self.marker_type = MARKER_TYPES[0]
-		
+
 		#TODO: Normalize these to one somehow?
 		self.marker_size = mpl_line.get_markersize()
 		self.line_width = mpl_line.get_linewidth()
 		self.display_name = str(mpl_line.get_label())
-	
+
 	def mimic_3dline(self, mpl_line):
 	
 		self.trace_type = Trace.TRACE_LINE3D
@@ -717,41 +719,92 @@ class Trace(Packable):
 			self.line_type = LINE_TYPES[0]
 		
 		# Get marker
-		mpl_marker_code = mpl_line.get_marker().lower()
-		match mpl_marker_code:
-			case '.':
-				self.marker_type = '.'
-			case '+':
-				self.marker_type = '+'
-			case '^':
-				self.marker_type = '^'
-			case 'v':
-				self.marker_type = 'v'
-			case 's':
-				self.marker_type = 's'
-			case None:
-				self.marker_type = 'None'
-			case 'none':
-				self.marker_type = 'None'
-			case _:
-				self.marker_type = '.'
-		
-		# Get marker
-		if self.marker_type == None:
-			self.marker_type = "None"
+		self.marker_type = _parse_marker(mpl_line.get_marker())
 		if self.marker_type not in MARKER_TYPES:
 			self.marker_type = MARKER_TYPES[0]
-		
+
 		#TODO: Normalize these to one somehow?
 		self.marker_size = mpl_line.get_markersize()
 		self.line_width = mpl_line.get_linewidth()
 		self.display_name = str(mpl_line.get_label())
 	
+	def mimic_errorbar(self, container: ErrorbarContainer, use_twin: bool = False):
+		''' Extracts data and styling from a matplotlib ErrorbarContainer. '''
+		self.trace_type = Trace.TRACE_LINE2D
+		self.has_error_bars = True
+		self.use_yaxis_R = use_twin
+
+		plotline, caplines, barlinecols = container.lines
+
+		# Main plotline data and style
+		self.x_data = [float(x) for x in plotline.get_xdata()]
+		self.y_data = [float(y) for y in plotline.get_ydata()]
+		self.z_data = []
+		self.line_color = mcolors.to_rgb(plotline.get_color())
+		self.alpha = plotline.get_alpha() or 1.0
+		self.marker_color = mcolors.to_rgb(plotline.get_markerfacecolor())
+		self.line_type = plotline.get_linestyle()
+		if self.line_type not in LINE_TYPES:
+			self.line_type = LINE_TYPES[0]
+		self.marker_type = _parse_marker(plotline.get_marker())
+		self.marker_size = float(plotline.get_markersize())
+		self.line_width = float(plotline.get_linewidth())
+		self.display_name = str(plotline.get_label())
+
+		# Recover per-point error values from bar line collections
+		x_arr = np.array(self.x_data)
+		y_arr = np.array(self.y_data)
+		n = len(x_arr)
+		y_err_neg = np.zeros(n)
+		y_err_pos = np.zeros(n)
+		x_err_neg = np.zeros(n)
+		x_err_pos = np.zeros(n)
+
+		for lc in barlinecols:
+			self.err_line_color = mcolors.to_rgb(lc.get_colors()[0])
+			self.err_line_width = float(np.ravel(lc.get_linewidths())[0])
+			for seg in lc.get_segments():
+				x0, y0 = seg[0]
+				x1, y1 = seg[1]
+				if abs(x1 - x0) < abs(y1 - y0):
+					# Vertical segment → y-error bar; match by nearest x
+					ci = int(np.argmin(np.abs(x_arr - (x0 + x1) / 2)))
+					cy = y_arr[ci]
+					y_err_neg[ci] = cy - min(y0, y1)
+					y_err_pos[ci] = max(y0, y1) - cy
+				else:
+					# Horizontal segment → x-error bar; match by nearest y
+					ci = int(np.argmin(np.abs(y_arr - (y0 + y1) / 2)))
+					cx = x_arr[ci]
+					x_err_neg[ci] = cx - min(x0, x1)
+					x_err_pos[ci] = max(x0, x1) - cx
+
+		self.x_err_neg = x_err_neg.tolist()
+		self.x_err_pos = x_err_pos.tolist()
+		self.y_err_neg = y_err_neg.tolist()
+		self.y_err_pos = y_err_pos.tolist()
+
+		# Cap properties
+		if caplines:
+			cap = caplines[0]
+			self.err_cap_color = mcolors.to_rgb(cap.get_color())
+			self.err_cap_width = float(cap.get_linewidth())
+			# matplotlib stores capsize as markersize = 2 × capsize, so halve it
+			# so that apply_to_errorbar can pass it back as capsize= directly
+			self.err_cap_size = float(cap.get_markersize()) / 2.0
+			self.err_cap_visible = bool(cap.get_visible())
+		else:
+			self.err_cap_size = 0.0
+			self.err_cap_visible = False
+
 	def apply_to(self, ax, gstyle:GraphStyle):
 		self.gs = gstyle
-		
+
 		if self.trace_type == Trace.TRACE_LINE2D:
-			self.apply_to_2dline(ax)
+			if self.has_error_bars:
+				self.apply_to_errorbar(ax)
+			else:
+				self.apply_to_2dline(ax)
 		elif self.trace_type == Trace.TRACE_LINE3D:
 			self.apply_to_3dline(ax)
 		else:
@@ -759,11 +812,45 @@ class Trace(Packable):
 			return
 	
 	def apply_to_2dline(self, ax):
-		
+
 		#TODO: Error check line type, marker type, and sizes
-		
+
 		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
-	
+
+	def apply_to_errorbar(self, ax):
+		''' Reconstructs an errorbar plot from stored data and styling. '''
+		x = np.array(self.x_data)
+		y = np.array(self.y_data)
+
+		y_err_neg = np.array(self.y_err_neg)
+		y_err_pos = np.array(self.y_err_pos)
+		x_err_neg = np.array(self.x_err_neg)
+		x_err_pos = np.array(self.x_err_pos)
+
+		yerr = np.vstack([y_err_neg, y_err_pos]) if np.any(y_err_neg > 0) or np.any(y_err_pos > 0) else None
+		xerr = np.vstack([x_err_neg, x_err_pos]) if np.any(x_err_neg > 0) or np.any(x_err_pos > 0) else None
+
+		# Convert GrAF marker '[]' back to matplotlib 's'
+		mpl_marker = 's' if self.marker_type == '[]' else self.marker_type
+
+		ax.errorbar(
+			x, y,
+			yerr=yerr,
+			xerr=xerr,
+			fmt=mpl_marker,
+			linestyle=self.line_type,
+			linewidth=self.line_width,
+			color=self.line_color,
+			alpha=self.alpha,
+			markerfacecolor=self.marker_color,
+			markersize=self.marker_size,
+			label=self.display_name,
+			ecolor=self.err_line_color,
+			elinewidth=self.err_line_width,
+			capsize=self.err_cap_size,
+			capthick=self.err_cap_width,
+		)
+
 	def apply_to_3dline(self, ax):
 		
 		#TODO: Error check line type, marker type, and sizes
@@ -782,10 +869,22 @@ class Trace(Packable):
 		self.manifest.append("line_width")
 		self.manifest.append("display_name")
 		self.manifest.append("include_in_legend")
-		
+
 		self.manifest.append("line_color")
 		self.manifest.append("alpha")
 		self.manifest.append("marker_color")
+
+		self.manifest.append("has_error_bars")
+		self.manifest.append("x_err_neg")
+		self.manifest.append("x_err_pos")
+		self.manifest.append("y_err_neg")
+		self.manifest.append("y_err_pos")
+		self.manifest.append("err_line_color")
+		self.manifest.append("err_line_width")
+		self.manifest.append("err_cap_size")
+		self.manifest.append("err_cap_color")
+		self.manifest.append("err_cap_width")
+		self.manifest.append("err_cap_visible")
 	
 class Scale(Packable):
 	''' Defines a singular axis/scale such as an x-axis.'''
@@ -962,7 +1061,12 @@ class Axis(Packable):
 	
 	def mimic(self, ax, twin=None):
 
-		if (len(ax.collections) > 0) or (len(ax.images) > 0):
+		# Only treat as surface/image when real raster/mesh collections are present.
+		# LineCollection objects (e.g. from ax.errorbar) live in ax.collections but
+		# belong to line-type axes, so they are excluded from this check.
+		has_real_surface = any(isinstance(c, (QuadMesh, Poly3DCollection)) for c in ax.collections)
+
+		if has_real_surface or len(ax.images) > 0:
 			# Distinguish a 3D surface (Poly3DCollection) from a 2D image/pcolormesh
 			if any(isinstance(c, Poly3DCollection) for c in ax.collections):
 				self.axis_type = Axis.AXIS_SURFACE
@@ -1014,16 +1118,58 @@ class Axis(Packable):
 			else:
 				self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
 		
-		# Find and mimic all lines (2d and 3d)
-		for idx, mpl_trace in enumerate(main_ax.lines):
+		# Collect Line2D objects owned by ErrorbarContainers so they are not
+		# double-counted in the plain-line pass below.
+		errbar_lines: set = set()
+		for container in main_ax.containers:
+			if isinstance(container, ErrorbarContainer):
+				plotline, caplines, barlinecols = container.lines
+				errbar_lines.add(plotline)
+				for cap in caplines:
+					errbar_lines.add(cap)
+
+		# Mimic each ErrorbarContainer as a single enriched Trace
+		tr_idx = 0
+		for container in main_ax.containers:
+			if not isinstance(container, ErrorbarContainer):
+				continue
+			self.log.lowdebug(f"Mimicing errorbar container: {container}")
+			t = Trace(log=self.log)
+			t.mimic_errorbar(container, use_twin=False)
+			self.traces[f'Tr{tr_idx}'] = t
+			tr_idx += 1
+
+		# Find and mimic all plain lines (2d and 3d), skipping errorbar-owned ones
+		for mpl_trace in main_ax.lines:
+			if mpl_trace in errbar_lines:
+				continue
 			self.log.lowdebug(f"Mimicing trace: {mpl_trace}")
-			self.traces[f'Tr{idx}'] = Trace(mpl_trace, log=self.log)
-		
+			self.traces[f'Tr{tr_idx}'] = Trace(mpl_trace, log=self.log)
+			tr_idx += 1
+
 		# Get lines for twin
-		idx_offset = len(self.traces)
 		if twin_ax is not None:
-			for idx, mpl_trace in enumerate(twin_ax.lines):
-				self.traces[f'Tr{idx+idx_offset}'] = Trace(mpl_trace, use_twin=True, log=self.log)
+			twin_errbar_lines: set = set()
+			for container in twin_ax.containers:
+				if isinstance(container, ErrorbarContainer):
+					plotline, caplines, barlinecols = container.lines
+					twin_errbar_lines.add(plotline)
+					for cap in caplines:
+						twin_errbar_lines.add(cap)
+
+			for container in twin_ax.containers:
+				if not isinstance(container, ErrorbarContainer):
+					continue
+				t = Trace(log=self.log)
+				t.mimic_errorbar(container, use_twin=True)
+				self.traces[f'Tr{tr_idx}'] = t
+				tr_idx += 1
+
+			for mpl_trace in twin_ax.lines:
+				if mpl_trace in twin_errbar_lines:
+					continue
+				self.traces[f'Tr{tr_idx}'] = Trace(mpl_trace, use_twin=True, log=self.log)
+				tr_idx += 1
 		
 		self.title = str(main_ax.get_title())
 		
