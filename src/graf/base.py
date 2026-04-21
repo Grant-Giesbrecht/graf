@@ -23,8 +23,8 @@ from colorama import Fore, Style
 ## TODO:
 # 1. Add error bars or shading support
 # 2. Add alpha to color specification
-# 3. Add 3D support (lines)
-# 4. Add 3D support (surface)
+# 3. Add 3D support (lines)       -- DONE
+# 4. Add 3D support (surface)     -- DONE
 #
 
 GRAF_VERSION = "0.0.0"
@@ -342,94 +342,104 @@ class Surface(Packable):
 		# Get colormap
 		self.cmap = sample_colormap(mpl_source.get_cmap(), N=30) #TODO: Make N adjustable with a flag
 	
-	# def mimic_poly3d(self, mpl_source):
-		
-	# 	#TODO: This is a SURFACE from plot_surface()
-		
-	# 	self.line_type = Trace.TRACE_LINE2D
-	# 	self.use_yaxis_R = use_twin
-		
-	# 	# Get line color
-	# 	self.line_color = mcolors.to_rgb(mpl_line.get_color())
-	# 	# if type(mpl_line.get_color()) == tuple:
-	# 	# 	self.line_color = mpl_line.get_color()
-	# 	# else:
-	# 	# 	self.line_color = hexstr_to_rgb(mpl_line.get_color())
-		
-	# 	# Get transparency
-	# 	self.alpha = mpl_line.get_alpha()
-	# 	if self.alpha is None:
-	# 		self.alpha = 1
-		
-	# 	# Get marker color
-	# 	self.marker_color = mcolors.to_rgb(mpl_line.get_markerfacecolor())
-	# 	# if type(mpl_line.get_markerfacecolor()) == tuple:
-	# 	# 	self.marker_color = mpl_line.get_markerfacecolor()
-	# 	# else:
-	# 	# 	self.marker_color = hexstr_to_rgb(mpl_line.get_markerfacecolor())
-		
-	# 	# Get x-data
-	# 	self.x_data = [float(x) for x in mpl_line.get_xdata()]
-	# 	self.y_data = [float(x) for x in mpl_line.get_ydata()]
-		
-	# 	# Get line type
-	# 	self.line_type = mpl_line.get_linestyle()
-	# 	if self.line_type not in LINE_TYPES:
-	# 		self.line_type = LINE_TYPES[0]
-		
-	# 	# Get marker
-	# 	mpl_marker_code = mpl_line.get_marker().lower()
-	# 	match mpl_marker_code:
-	# 		case '.':
-	# 			self.marker_type = '.'
-	# 		case '+':
-	# 			self.marker_type = '+'
-	# 		case '^':
-	# 			self.marker_type = '^'
-	# 		case 'v':
-	# 			self.marker_type = 'v'
-	# 		case 's':
-	# 			self.marker_type = '[]'
-	# 		case 'o':
-	# 			self.marker_type = 'o'
-	# 		case None:
-	# 			self.marker_type = 'None'
-	# 		case 'none':
-	# 			self.marker_type = 'None'
-	# 		case '*':
-	# 			self.marker_type = '*'
-	# 		case '_':
-	# 			self.marker_type = '_'
-	# 		case '|':
-	# 			self.marker_type = '|'
-	# 		case 'x':
-	# 			self.marker_type = 'x'
-	# 		case _:
-	# 			self.marker_type = '.'
-		
-	# 	# Get marker
-	# 	if self.marker_type == None:
-	# 		self.marker_type = "None"
-	# 	if self.marker_type not in MARKER_TYPES:
-	# 		self.marker_type = MARKER_TYPES[0]
-		
-	# 	#TODO: Normalize these to one somehow?
-	# 	self.marker_size = mpl_line.get_markersize()
-	# 	self.line_width = mpl_line.get_linewidth()
-	# 	self.display_name = str(mpl_line.get_label())
+	def mimic_poly3d(self, mpl_source):
+		''' Mimics a matplotlib Poly3DCollection (produced by ax.plot_surface()).
+
+		Reconstructs the original X/Y/Z grid by collecting all polygon vertices and
+		finding unique X and Y coordinate values. This assumes the surface was created
+		from a meshgrid-style input (the standard use case for plot_surface).
+		'''
+
+		self.surf_type = Surface.SURF_SURFACE
+
+		# Extract all vertex coordinates. The internal storage format changed in
+		# matplotlib 3.9: older versions used _segments3d (list of per-face arrays),
+		# newer versions use _vec (4 x n_verts homogeneous matrix, rows = x, y, z, 1).
+		if hasattr(mpl_source, '_vec') and hasattr(mpl_source, '_segslices'):
+			# mpl >= 3.9: _vec rows are (x, y, z, 1), columns are all verts concatenated
+			all_verts = mpl_source._vec[:3, :].T  # shape (n_verts, 3)
+		elif hasattr(mpl_source, '_segments3d'):
+			# mpl < 3.9: list of per-face vertex arrays
+			all_verts = np.vstack([np.asarray(s) for s in mpl_source._segments3d])
+		else:
+			raise AttributeError(
+				"Cannot extract vertex data from Poly3DCollection: "
+				"neither '_vec' nor '_segments3d' attribute found. "
+				"Unsupported matplotlib version."
+			)
+
+		# Unique x and y values define the two grid axes
+		unique_x = np.unique(np.round(all_verts[:, 0], 8))
+		unique_y = np.unique(np.round(all_verts[:, 1], 8))
+		ncols = len(unique_x)
+		nrows = len(unique_y)
+
+		# Build fast index lookups: coordinate value → grid index
+		x_to_idx = {round(float(x), 8): i for i, x in enumerate(unique_x)}
+		y_to_idx = {round(float(y), 8): i for i, y in enumerate(unique_y)}
+
+		# Walk every vertex and fill the Z grid
+		Z_grid = np.full((nrows, ncols), np.nan)
+		for vx, vy, vz in all_verts:
+			xi = x_to_idx[round(float(vx), 8)]
+			yi = y_to_idx[round(float(vy), 8)]
+			Z_grid[yi, xi] = vz
+
+		X_grid, Y_grid = np.meshgrid(unique_x, unique_y)
+		self.uniform_grid = True
+		self.x_grid = X_grid.tolist()
+		self.y_grid = Y_grid.tolist()
+		self.z_grid = Z_grid.tolist()
+
+		# Colormap
+		try:
+			self.cmap = sample_colormap(mpl_source.get_cmap(), N=30)
+		except Exception:
+			self.cmap = sample_colormap('viridis', N=30)
+
+		# Alpha
+		self.alpha = mpl_source.get_alpha()
+		if self.alpha is None:
+			self.alpha = 1
+
+		# Edge color (may be empty/broadcast for plot_surface defaults)
+		try:
+			ec = mpl_source.get_edgecolor()
+			if ec is not None and len(ec) > 0:
+				self.line_color = tuple(float(c) for c in np.asarray(ec[0])[:3])
+		except Exception:
+			pass
+
+		# Edge line width
+		try:
+			lw = mpl_source.get_linewidth()
+			self.line_width = float(lw[0]) if hasattr(lw, '__len__') else float(lw)
+		except Exception:
+			pass
 	
 	def apply_to(self, ax, gstyle:GraphStyle):
-		
+
 		self.gs = gstyle
-		
+
 		if self.surf_type == Surface.SURF_IMAGE:
 			self._apply_to_image(ax)
+		elif self.surf_type == Surface.SURF_SURFACE:
+			self._apply_to_surface(ax)
 		else:
 			self.log.error(f"Surface.apply_to(): Unrecognized surface type {self.surf_type}")
-	
+
 	def _apply_to_image(self, ax):
-		
+
 		ax.pcolormesh(self.x_grid, self.y_grid, self.z_grid, cmap=mcolors.ListedColormap(self.cmap), alpha=self.alpha, antialiased=self.antialias)
+
+	def _apply_to_surface(self, ax):
+		''' Reconstructs a 3D surface via ax.plot_surface(). '''
+
+		X = np.array(self.x_grid)
+		Y = np.array(self.y_grid)
+		Z = np.array(self.z_grid)
+		cmap = mcolors.ListedColormap(self.cmap)
+		ax.plot_surface(X, Y, Z, cmap=cmap, alpha=self.alpha, linewidth=self.line_width)
 	
 	def set_manifest(self):
 		
@@ -862,11 +872,14 @@ class Axis(Packable):
 		self.manifest.append("title")
 	
 	def mimic(self, ax, twin=None):
-		
-		#TODO: Detect axis type
+
 		if (len(ax.collections) > 0) or (len(ax.images) > 0):
-			self.axis_type = Axis.AXIS_IMAGE
-			self.log.debug(f"Mimicing Surface object")
+			# Distinguish a 3D surface (Poly3DCollection) from a 2D image/pcolormesh
+			if any(isinstance(c, Poly3DCollection) for c in ax.collections):
+				self.axis_type = Axis.AXIS_SURFACE
+			else:
+				self.axis_type = Axis.AXIS_IMAGE
+			self.log.debug(f"Mimicing Surface object (axis_type={self.axis_type})")
 			self._mimic_surface(ax)
 		else:
 			self.log.debug(f"Mimicing Trace object")
@@ -946,12 +959,14 @@ class Axis(Packable):
 		else:
 			self.z_axis = Scale(self.gs, valid=False, log=self.log)
 		
-		# Check if grid is enabled
-		if len(ax.xaxis.get_gridlines()) == 0:
+		# Check if grid is enabled (3D axes expose _draw_grid; 2D axes use gridlines)
+		if hasattr(ax, '_draw_grid'):
+			self.grid_on = ax._draw_grid
+		elif len(ax.xaxis.get_gridlines()) == 0:
 			self.grid_on = False
 		else:
 			self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
-		
+
 		# Find and mimic all images (AxesImage)
 		for idx, mpl_image in enumerate(ax.images):
 			self.surfaces[f'Sf{idx}'] = Surface(mpl_image, log=self.log)
@@ -1011,18 +1026,18 @@ class Axis(Packable):
 			ax.set_title(self.title)
 	
 	def image_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None):
-		
+
 		self.gs = gstyle
-		
-		# Apply traces
+
 		for sf in self.surfaces.keys():
 			self.surfaces[sf].apply_to(ax, self.gs)
-		
-		# self.relative_size = []
+
 		self.x_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_X)
 		self.y_axis_L.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Y)
+		if self.z_axis.is_valid:
+			self.z_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Z)
 		ax.grid(self.grid_on)
-		
+
 		local_font = self.gs.title_font.to_tuple()
 		if local_font is not None:
 			ax.set_title(self.title, fontproperties=local_font[0], size=local_font[1])
@@ -1144,16 +1159,24 @@ class Graf(Packable):
 		
 		#TODO: Iterate over twin vs sole axes differently
 		
-		# Mimic all sole-axes
+		# Mimic all sole-axes (skip axes without a subplotspec, e.g. colorbar axes)
 		self.axes = {}
-		for idx, ax in enumerate(sole_axes):
-			self.axes[f'Ax{idx}'] = Axis(self.style, ax, log=self.log)
-		
+		ax_idx = 0
+		for ax in sole_axes:
+			if ax.get_subplotspec() is None:
+				self.log.warning(f"Skipping axis without subplotspec (e.g. colorbar).")
+				continue
+			self.axes[f'Ax{ax_idx}'] = Axis(self.style, ax, log=self.log)
+			ax_idx += 1
+
 		# Mimic all twin-axes
-		idx_offset = len(self.axes)
+		idx_offset = ax_idx
 		for idx, ax in enumerate(twin_axes):
 			if len(ax) != 2:
 				print(f"ERROR: Failed to properly identify twin axes. Skipping.")
+				continue
+			if ax[0].get_subplotspec() is None:
+				self.log.warning(f"Skipping twin axis pair without subplotspec.")
 				continue
 			self.axes[f'Ax{idx+idx_offset}'] = Axis(self.style, ax[0], twin_ax=ax[1], log=self.log)
 	
@@ -1324,8 +1347,10 @@ class Graf(Packable):
 	
 	def save_hdf(self, filename:str):
 		datapacket = self.pack()
-		# print(datapacket)
-		dict_summary(datapacket, verbose=1) #TODO: Make this a flag
+		try:
+			dict_summary(datapacket, verbose=1) #TODO: Make this a flag
+		except Exception:
+			pass
 		dict_to_hdf(datapacket, filename, show_detail=False)
 	
 	def load_hdf(self, filename:str):
