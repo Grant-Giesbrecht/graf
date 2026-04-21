@@ -45,7 +45,7 @@ except Exception as e:
 	print(__name__)
 	print(f"{Fore.LIGHTRED_EX}An error occured. ({e}){Style.RESET_ALL}")
 
-def sample_colormap(cmap_name:str=None, listed_cmap:mcolors.ListedColormap=None, N:int=20):
+def sample_colormap(cmap_name:str=None, listed_cmap:mcolors.ListedColormap=None, N:int=20, trim_in:tuple=None):
 	''' Discretizes a colormap, returning a list of rgb lists from the provided
 	colormap.
 	
@@ -54,10 +54,36 @@ def sample_colormap(cmap_name:str=None, listed_cmap:mcolors.ListedColormap=None,
 		listed_cmap: Matplotlib ListedColormap object. If provided, cmap_name is
 			ignored.
 		N: The number of colors to break the colormap into.
+		trim_in: Optional tuple that trims the colormap inwards to eliminate the 
+			extremes of the colormap. Format: (Number of samples to add to N, number of samples to 
+			move in from the lower end). For example, if N is 5, you could send the tuple (2, 1) which
+			would use 7 samples and eliminate the exteme most point on either edge. Or you could use
+			(2, 2) to use 7 samples, keep the upper most extreme, but eliminate the lower two most
+			extreme points.
 	
 	Returns:
 		The list of rgb lists representing the provided colormap.
 	'''
+	
+	# Check for trim conditions
+	if trim_in is not None:
+		
+		try:
+			
+			# Validate trim_in data
+			if trim_in[1] > trim_in[0]:
+				trim_in = None
+			elif trim_in[1] < 0:
+				trim_in = None
+			else:
+				
+				# Get cmap with additional steps
+				cm = sample_colormap(cmap_name=cmap_name, listed_cmap=listed_cmap, N=N+trim_in[0])
+				return cm[trim_in[1]:trim_in[1]+N]
+		except:
+			# Invalid tuple, skip
+			trim_in = None
+			pass 
 	
 	# Get a listed cmap and resample
 	if listed_cmap is not None:
