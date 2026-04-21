@@ -993,15 +993,17 @@ class Axis(Packable):
 		else:
 			self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
 
+		self.title = str(ax.get_title())
+
 		# Find and mimic all images (AxesImage)
 		for idx, mpl_image in enumerate(ax.images):
 			self.surfaces[f'Sf{idx}'] = Surface(mpl_image, log=self.log)
-		
+
 		# Find and mimic all "collections" (QuadMesh and Poly3DCollection)
 		idx_offset = len(self.surfaces)
 		for idx, mpl_coll in enumerate(ax.collections):
 			self.surfaces[f'Sf{idx+idx_offset}'] = Surface(mpl_coll, log=self.log)
-		
+
 		# Get subplot position
 		col_start = ax.get_subplotspec().colspan.start
 		col_stop = ax.get_subplotspec().colspan.stop
