@@ -736,25 +736,45 @@ class Trace(Packable):
 
 		plotline, caplines, barlinecols = container.lines
 
-		# Main plotline data and style
-		self.x_data = [float(x) for x in plotline.get_xdata()]
-		self.y_data = [float(y) for y in plotline.get_ydata()]
-		self.z_data = []
-		self.line_color = mcolors.to_rgb(plotline.get_color())
-		self.alpha = plotline.get_alpha() or 1.0
-		self.marker_color = mcolors.to_rgb(plotline.get_markerfacecolor())
-		self.line_type = plotline.get_linestyle()
-		if self.line_type not in LINE_TYPES:
-			self.line_type = LINE_TYPES[0]
-		self.marker_type = _parse_marker(plotline.get_marker())
-		self.marker_size = float(plotline.get_markersize())
-		self.line_width = float(plotline.get_linewidth())
-		self.display_name = str(plotline.get_label())
+		# Label lives on the container, not the plotline
+		self.display_name = str(container.get_label())
 
-		# Recover per-point error values from bar line collections
+		# fmt='none' yields plotline=None; fall back to defaults in that case
+		if plotline is not None:
+			self.x_data = [float(x) for x in plotline.get_xdata()]
+			self.y_data = [float(y) for y in plotline.get_ydata()]
+			self.z_data = []
+			self.line_color = mcolors.to_rgb(plotline.get_color())
+			self.alpha = plotline.get_alpha() or 1.0
+			self.marker_color = mcolors.to_rgb(plotline.get_markerfacecolor())
+			self.line_type = plotline.get_linestyle()
+			if self.line_type not in LINE_TYPES:
+				self.line_type = LINE_TYPES[0]
+			self.marker_type = _parse_marker(plotline.get_marker())
+			self.marker_size = float(plotline.get_markersize())
+			self.line_width = float(plotline.get_linewidth())
+		else:
+			# Recover x/y from bar line segments when there is no plotline
+			x_vals, y_vals = [], []
+			for lc in barlinecols:
+				for seg in lc.get_segments():
+					cx = (seg[0][0] + seg[1][0]) / 2
+					cy = (seg[0][1] + seg[1][1]) / 2
+					x_vals.append(cx)
+					y_vals.append(cy)
+			self.x_data = sorted(set(round(v, 10) for v in x_vals))
+			self.y_data = []  # cannot reliably recover y without plotline
+			self.z_data = []
+			self.line_type = 'None'
+			self.marker_type = 'None'
+
+		# Recover per-point error values from bar line collections.
+		# When plotline is None (e.g. fmt='none') y_data is empty so skip.
 		x_arr = np.array(self.x_data)
 		y_arr = np.array(self.y_data)
 		n = len(x_arr)
+		if n == 0 or len(y_arr) == 0:
+			return
 		y_err_neg = np.zeros(n)
 		y_err_pos = np.zeros(n)
 		x_err_neg = np.zeros(n)
@@ -784,11 +804,11 @@ class Trace(Packable):
 		self.y_err_neg = y_err_neg.tolist()
 		self.y_err_pos = y_err_pos.tolist()
 
-		# Cap properties
+		# Cap properties — capthick sets markeredgewidth, not linewidth
 		if caplines:
 			cap = caplines[0]
 			self.err_cap_color = mcolors.to_rgb(cap.get_color())
-			self.err_cap_width = float(cap.get_linewidth())
+			self.err_cap_width = float(cap.get_markeredgewidth())
 			# matplotlib stores capsize as markersize = 2 × capsize, so halve it
 			# so that apply_to_errorbar can pass it back as capsize= directly
 			self.err_cap_size = float(cap.get_markersize()) / 2.0
