@@ -82,7 +82,7 @@ function fig = graf_to_fig(g, varargin)
         elseif strcmp(ax_type, 'AXIS_LINE3D')
             render_line3d(ax_h, ax_s);
         elseif strcmp(ax_type, 'AXIS_SURFACE') || strcmp(ax_type, 'AXIS_IMAGE')
-            render_surface(ax_h, ax_s);
+            render_surface(ax_h, ax_s, ax_type);
         end
 
         % Common axis formatting
@@ -137,7 +137,7 @@ function render_line2d(ax_h, ax_s)
         if ~isempty(ax_s.y_axis_R.label)
             ylabel(ax_h, ax_s.y_axis_R.label);
         end
-        if ax_s.y_axis_R.is_valid
+        if ax_s.y_axis_R.is_valid && ax_s.y_axis_R.val_min < ax_s.y_axis_R.val_max
             ylim(ax_h, [ax_s.y_axis_R.val_min, ax_s.y_axis_R.val_max]);
         end
         yyaxis(ax_h, 'left');
@@ -147,7 +147,7 @@ function render_line2d(ax_h, ax_s)
         if ax_s.z_axis.is_valid && ~isempty(ax_s.z_axis.label)
             zlabel(ax_h, ax_s.z_axis.label);
         end
-        if ax_s.z_axis.is_valid
+        if ax_s.z_axis.is_valid && ax_s.z_axis.val_min < ax_s.z_axis.val_max
             zlim(ax_h, [ax_s.z_axis.val_min, ax_s.z_axis.val_max]);
         end
         view(ax_h, 3);
@@ -271,7 +271,7 @@ end
 % ---------------------------------------------------------------------------
 % Surface / image axes
 % ---------------------------------------------------------------------------
-function render_surface(ax_h, ax_s)
+function render_surface(ax_h, ax_s, ax_type)
     sf_names = fieldnames(ax_s.surfaces);
     if isempty(sf_names)
         return;
@@ -284,15 +284,20 @@ function render_surface(ax_h, ax_s)
     [nrx, ncx] = size(X);
     [nrz, ncz] = size(Z);
 
-    if nrx == nrz + 1 && ncx == ncz + 1
-        % Corner-based grid (pcolormesh style): X/Y are (M+1)x(N+1), Z is MxN.
-        % MATLAB's pcolor needs all three the same size; pad Z with a repeated
-        % border row and column (the extra cells are not rendered with flat shading).
+    if strcmp(ax_type, 'AXIS_SURFACE') && isequal(size(X), size(Z))
+        % 3-D surface: all grids same size — use surf and set a 3-D view.
+        surf(ax_h, X, Y, Z);
+        shading(ax_h, 'interp');
+        view(ax_h, 3);
+    elseif nrx == nrz + 1 && ncx == ncz + 1
+        % Corner-based grid (pcolormesh): X/Y are (M+1)x(N+1), Z is MxN.
+        % pcolor needs all three the same size; pad Z with a repeated border
+        % (extra cells are invisible under flat shading).
         Z_plot = Z([1:end, end], [1:end, end]);
         pcolor(ax_h, X, Y, Z_plot);
         shading(ax_h, 'flat');
     else
-        % Centre-based grid (imshow / contourf style)
+        % Centre-based grid (imshow style)
         pcolor(ax_h, X, Y, Z);
         shading(ax_h, 'interp');
     end
@@ -323,13 +328,13 @@ function apply_axis_labels(ax_h, ax_s)
     if ~isempty(ax_s.x_axis.label)
         xlabel(ax_h, ax_s.x_axis.label);
     end
-    if ax_s.x_axis.is_valid
+    if ax_s.x_axis.is_valid && ax_s.x_axis.val_min < ax_s.x_axis.val_max
         xlim(ax_h, [ax_s.x_axis.val_min, ax_s.x_axis.val_max]);
     end
     if ~isempty(ax_s.y_axis_L.label)
         ylabel(ax_h, ax_s.y_axis_L.label);
     end
-    if ax_s.y_axis_L.is_valid
+    if ax_s.y_axis_L.is_valid && ax_s.y_axis_L.val_min < ax_s.y_axis_L.val_max
         ylim(ax_h, [ax_s.y_axis_L.val_min, ax_s.y_axis_L.val_max]);
     end
 end

@@ -1,1 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import h5py; import hdf5; print\\('ok'\\)\")",
+      "Bash(python3 -c \"from jarnsaxa import hdf_to_dict, dict_to_hdf; help\\(hdf_to_dict\\)\")",
+      "Bash(python3 -c \"from jarnsaxa import hdf_to_dict, dict_to_hdf; help\\(dict_to_hdf\\)\")",
+      "Bash(pip show *)",
+      "Bash(pip3 show *)",
+      "Bash(git ls-tree *)",
+      "Bash(git checkout *)"
+    ]
+  }
 }
