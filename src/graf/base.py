@@ -1364,13 +1364,15 @@ class Graf(Packable):
 	
 	def __init__(self, fig=None, description:str="", conditions:dict={}, log:plf.LogPile=None):
 		super().__init__(log)
-		
+
 		self.style = GraphStyle(log=self.log)
 		self.info = MetaInfo(description=description, conditions=conditions, log=self.log)
 		self.supertitle = ""
-		
+		self.fig_width_cm = 6.4 * 2.54   # matplotlib default (6.4 in) in cm
+		self.fig_height_cm = 4.8 * 2.54  # matplotlib default (4.8 in) in cm
+
 		self.axes = {} # Has to be a dictinary so HDF knows how to handle it
-		
+
 		if fig is not None:
 			self.mimic(fig)
 	
@@ -1378,6 +1380,8 @@ class Graf(Packable):
 		self.obj_manifest.append("style")
 		self.obj_manifest.append("info")
 		self.manifest.append("supertitle")
+		self.manifest.append("fig_width_cm")
+		self.manifest.append("fig_height_cm")
 		self.dict_manifest["axes"] = Axis(GraphStyle())
 	
 	def mimic(self, fig):
@@ -1390,6 +1394,9 @@ class Graf(Packable):
 		# self.style = ...
 		# self.info = ...
 		self.supertitle = str(fig.get_suptitle())
+		w_in, h_in = fig.get_size_inches()
+		self.fig_width_cm = float(w_in) * 2.54
+		self.fig_height_cm = float(h_in) * 2.54
 		
 		#TODO: Determine where each subplot goes and what it's bounds are
 		#can use Ax.get_gridspec() to get the object that defines stuff about the grid
@@ -1543,15 +1550,20 @@ class Graf(Packable):
 		else:
 			return list(tr.y_data)
 	
-	def to_fig(self, window_title:str=None):
-		''' Converts the Graf object to a matplotlib figure as best as possible.'''
-		
-		# TODO: Make the figure size/aspeect ratio set-able
+	def to_fig(self, window_title:str=None, scale:float=1.0):
+		''' Converts the Graf object to a matplotlib figure as best as possible.
+
+		Args:
+			window_title: Optional title for the figure window.
+			scale: Uniform scale factor applied to the stored figure size.
+				   1.0 reproduces the original size; 2.0 doubles both dimensions.
+		'''
+
+		figsize = (self.fig_width_cm / 2.54 * scale, self.fig_height_cm / 2.54 * scale)
 		if window_title is None:
-			gen_fig = plt.figure()
+			gen_fig = plt.figure(figsize=figsize)
 		else:
-			print(window_title)
-			gen_fig = plt.figure(window_title)
+			gen_fig = plt.figure(window_title, figsize=figsize)
 		
 		gen_fig.suptitle(self.supertitle)
 		
