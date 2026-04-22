@@ -99,18 +99,50 @@ end
 % ---------------------------------------------------------------------------
 function render_line2d(ax_h, ax_s)
     tr_names = fieldnames(ax_s.traces);
+
+    % Pre-scan: does any trace use the right y-axis?
+    has_right = false;
+    for ti = 1:numel(tr_names)
+        if ax_s.traces.(tr_names{ti}).use_yaxis_R
+            has_right = true;
+            break;
+        end
+    end
+
     is_3d = false;
     for ti = 1:numel(tr_names)
         tr = ax_s.traces.(tr_names{ti});
         if tr.has_error_bars
+            if has_right; yyaxis(ax_h, 'left'); end
             draw_errorbar(ax_h, tr);
         elseif strcmp(tr.trace_type, 'TRACE_LINE3D')
             draw_line3d(ax_h, tr);
             is_3d = true;
         else
+            if has_right
+                if tr.use_yaxis_R
+                    yyaxis(ax_h, 'right');
+                else
+                    yyaxis(ax_h, 'left');
+                end
+            end
             draw_line2d(ax_h, tr);
         end
     end
+
+    % Apply right y-axis label and limits, then leave left axis active
+    % so that apply_axis_labels (called by the caller) targets the left side.
+    if has_right
+        yyaxis(ax_h, 'right');
+        if ~isempty(ax_s.y_axis_R.label)
+            ylabel(ax_h, ax_s.y_axis_R.label);
+        end
+        if ax_s.y_axis_R.is_valid
+            ylim(ax_h, [ax_s.y_axis_R.val_min, ax_s.y_axis_R.val_max]);
+        end
+        yyaxis(ax_h, 'left');
+    end
+
     if is_3d
         if ax_s.z_axis.is_valid && ~isempty(ax_s.z_axis.label)
             zlabel(ax_h, ax_s.z_axis.label);
@@ -123,16 +155,13 @@ function render_line2d(ax_h, ax_s)
 end
 
 function draw_line2d(ax_h, tr)
+    % yyaxis switching is handled by render_line2d before this call.
     x = tr.x_data(:);
     y = tr.y_data(:);
     ls    = graf_linestyle(tr.line_type);
     mk    = graf_marker(tr.marker_type);
     col   = double(tr.line_color(:)');
     mkcol = double(tr.marker_color(:)');
-
-    if tr.use_yaxis_R
-        yyaxis(ax_h, 'right');
-    end
 
     h = plot(ax_h, x, y, ...
         'LineStyle',       ls, ...
@@ -248,22 +277,29 @@ function render_surface(ax_h, ax_s)
         return;
     end
     sf = ax_s.surfaces.(sf_names{1});
-    Z = sf.z_grid;
-    X = sf.x_grid;
-    Y = sf.y_grid;
+    Z = double(sf.z_grid);
+    X = double(sf.x_grid);
+    Y = double(sf.y_grid);
 
-    if size(X,1) == size(Z,1)+1 && size(X,2) == size(Z,2)+1
-        % Corner-based grid (pcolormesh style)
-        pcolor(ax_h, X, Y, padarray(Z, [1 1], 'replicate', 'post'));
+    [nrx, ncx] = size(X);
+    [nrz, ncz] = size(Z);
+
+    if nrx == nrz + 1 && ncx == ncz + 1
+        % Corner-based grid (pcolormesh style): X/Y are (M+1)x(N+1), Z is MxN.
+        % MATLAB's pcolor needs all three the same size; pad Z with a repeated
+        % border row and column (the extra cells are not rendered with flat shading).
+        Z_plot = Z([1:end, end], [1:end, end]);
+        pcolor(ax_h, X, Y, Z_plot);
         shading(ax_h, 'flat');
     else
+        % Centre-based grid (imshow / contourf style)
         pcolor(ax_h, X, Y, Z);
         shading(ax_h, 'interp');
     end
 
-    % Apply colormap
-    if ~isempty(sf.cmap)
-        colormap(ax_h, sf.cmap);
+    % Colormap is stored as Nx4 RGBA; MATLAB colormap needs Nx3 RGB.
+    if ~isempty(sf.cmap) && size(sf.cmap, 2) >= 3
+        colormap(ax_h, sf.cmap(:, 1:3));
     end
 
     if sf.has_colorbar
