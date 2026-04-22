@@ -88,9 +88,8 @@ function fig = graf_to_fig(g, varargin)
         % Common axis formatting
         apply_axis_labels(ax_h, ax_s);
         if ax_s.grid_on
-            ax_h.XGrid = 'on';
-            ax_h.YGrid = 'on';
-            ax_h.ZGrid = 'on';
+            axes(ax_h);
+            grid on;
         end
     end
 end

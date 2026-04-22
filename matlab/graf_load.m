@@ -171,13 +171,26 @@ end
 
 function b = hdf5_read_bool(filepath, dset_path)
 % Read a scalar HDF5 boolean and return a proper MATLAB logical scalar.
-% h5read may return uint8, logical, or a 1x1 array — handle all cases.
+% h5py stores numpy bool as an HDF5 enum type; MATLAB's h5read silently
+% returns 0 for this type regardless of the actual value.  The low-level
+% H5D.read API reads the enum's underlying int8 value correctly (0 or 1).
+
+    b = false;
+    fid = H5F.open(filepath, 'H5F_ACC_RDONLY', 'H5P_DEFAULT');
     try
-        raw = h5read(filepath, dset_path);
-        b = logical(raw(1) ~= 0);
+        did = H5D.open(fid, dset_path);
+        try
+            raw = H5D.read(did, 'H5ML_DEFAULT', 'H5S_ALL', 'H5S_ALL', 'H5P_DEFAULT');
+            b = logical(raw(1) ~= 0);
+        catch e
+            disp(['hdf5_read_bool error at ' dset_path ': ' e.message]);
+        end
+        H5D.close(did);
     catch
-        b = false;
     end
+    H5F.close(fid);
+	
+	
 end
 
 function s = hdf5_read_str(filepath, dset_path)
