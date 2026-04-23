@@ -321,6 +321,8 @@ class Surface(Packable):
 		self.colorbar_orientation = "vertical"
 		self.colorbar_ticks = []
 		self.colorbar_tick_labels = []
+		self.colorbar_vmin = float('nan')
+		self.colorbar_vmax = float('nan')
 
 		if mpl_source is not None:
 			self.mimic(mpl_source=mpl_source)
@@ -353,6 +355,11 @@ class Surface(Packable):
 			self.colorbar_ticks = [float(t) for t in cb.get_ticks()]
 		except Exception:
 			self.colorbar_ticks = []
+		try:
+			self.colorbar_vmin = float(mpl_source.norm.vmin)
+			self.colorbar_vmax = float(mpl_source.norm.vmax)
+		except Exception:
+			pass
 
 	def _mimic_quadmesh(self, mpl_source):
 
@@ -519,30 +526,67 @@ class Surface(Packable):
 		y = np.array(self.y_grid)
 		z = np.array(self.z_grid)
 		cmap = mcolors.ListedColormap(self.cmap)
+		vmin, vmax = self._clim(z)
 		# shading='auto' correctly handles both old .graf files (center coordinates,
 		# x.shape == z.shape) and new ones (corner coordinates, x.shape == z.shape+1)
-		return ax.pcolormesh(x, y, z, cmap=cmap, shading='auto', alpha=self.alpha, antialiased=self.antialias)
+		return ax.pcolormesh(x, y, z, cmap=cmap, shading='auto', alpha=self.alpha,
+		                     antialiased=self.antialias, vmin=vmin, vmax=vmax)
 
 	def _apply_to_surface(self, ax):
 		''' Reconstructs a 3D surface via ax.plot_surface(). '''
-
 		X = np.array(self.x_grid)
 		Y = np.array(self.y_grid)
 		Z = np.array(self.z_grid)
 		cmap = mcolors.ListedColormap(self.cmap)
-		return ax.plot_surface(X, Y, Z, cmap=cmap, alpha=self.alpha, linewidth=self.line_width)
+		vmin, vmax = self._clim(Z)
+		return ax.plot_surface(X, Y, Z, cmap=cmap, alpha=self.alpha,
+		                       linewidth=self.line_width, vmin=vmin, vmax=vmax)
+
+	def _clim(self, z_arr):
+		''' Return (vmin, vmax) for colormap scaling.
+		Uses stored norm limits when available; falls back to the data range. '''
+		if not (np.isnan(self.colorbar_vmin) or np.isnan(self.colorbar_vmax)):
+			return self.colorbar_vmin, self.colorbar_vmax
+		finite = z_arr[np.isfinite(z_arr)]
+		if len(finite) == 0:
+			return None, None
+		return float(finite.min()), float(finite.max())
 
 	def apply_colorbar(self, fig, mappable, parent_ax):
 		''' Attaches a colorbar to the figure using the stored colorbar properties. '''
 		if not self.has_colorbar or mappable is None:
 			return
+
+		# Determine the exact color limits to enforce.
+		vmin, vmax = self._clim(np.array(self.z_grid))
+
+		# Pin the mappable before creating the colorbar so matplotlib builds
+		# the colorbar axis to exactly this range.
+		if vmin is not None and vmax is not None:
+			mappable.set_clim(vmin, vmax)
+
 		cb = fig.colorbar(mappable, ax=parent_ax, orientation=self.colorbar_orientation)
+
 		if self.colorbar_orientation == 'vertical':
 			cb.ax.set_ylabel(self.colorbar_label)
 		else:
 			cb.ax.set_xlabel(self.colorbar_label)
-		if self.colorbar_ticks:
+
+		# Only restore ticks that fall within [vmin, vmax] so that out-of-range
+		# ticks don't force matplotlib to extend the colorbar axis beyond the limits.
+		if self.colorbar_ticks and vmin is not None and vmax is not None:
+			in_range = [t for t in self.colorbar_ticks if vmin <= t <= vmax]
+			cb.set_ticks(in_range if in_range else self.colorbar_ticks)
+		elif self.colorbar_ticks:
 			cb.set_ticks(self.colorbar_ticks)
+
+		# Explicitly clamp the colorbar axis — matplotlib may still add small
+		# padding around the outermost ticks even after set_clim.
+		if vmin is not None and vmax is not None:
+			if self.colorbar_orientation == 'vertical':
+				cb.ax.set_ylim(vmin, vmax)
+			else:
+				cb.ax.set_xlim(vmin, vmax)
 	
 	def set_manifest(self):
 
@@ -568,6 +612,8 @@ class Surface(Packable):
 		self.manifest.append("colorbar_orientation")
 		self.manifest.append("colorbar_ticks")
 		self.manifest.append("colorbar_tick_labels")
+		self.manifest.append("colorbar_vmin")
+		self.manifest.append("colorbar_vmax")
 
 class Trace(Packable):
 	''' Represents a trace that can be displayed on a set of axes'''
