@@ -5,7 +5,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 from abc import ABC, abstractmethod
-from jarnsaxa import hdf_to_dict, dict_to_hdf, Packable
+# from stardust.io import hdf_to_dict, dict_to_hdf
+from stardust.sandbox import dict_to_tome, tome_to_dict
+from stardust.serializer import Packable
 import pylogfile.base as plf
 from ganymede import dict_summary
 import matplotlib.font_manager as fm
@@ -1672,34 +1674,37 @@ class Graf(Packable):
 		# Return newly created figure
 		return gen_fig
 	
-	def save_hdf(self, filename:str):
+	def write_graf(self, filename:str):
 		datapacket = self.pack()
 		try:
 			dict_summary(datapacket, verbose=1) #TODO: Make this a flag
 		except Exception:
 			pass
-		dict_to_hdf(datapacket, filename, show_detail=False)
+		# dict_to_hdf(datapacket, filename, show_detail=False)
+		dict_to_tome(datapacket, filename, show_detail=False)
 	
-	def load_hdf(self, filename:str):
-		datapacket = hdf_to_dict(filename)
+	def read_graf(self, filename:str):
+		# datapacket = hdf_to_dict(filename)
+		datapacket = tome_to_dict(filename)
 		self.unpack(datapacket)
 
-def write_pfig(figure, file_handle): #:matplotlib.figure.Figure, file_handle):
+def save_pklfig(figure, filename): #:matplotlib.figure.Figure, file_handle):
 	''' Writes the contents of a matplotlib figure to a pfig file. '''
 	
-	pickle.dump(figure, file_handle)
+	with open(filename, 'w') as fh:
+		pickle.dump(figure, fh)
 
-def write_GrAF(figure, file_handle, description:str="", conditions:dict={}):
+def save_graf(figure, filename, description:str="", conditions:dict={}):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
 	
 	temp_graf = Graf(figure, description=description, conditions=conditions)
-	temp_graf.save_hdf(file_handle)
+	temp_graf.write_graf(filename)
 
-def read_GrAF(file_handle):
+def load_graf(filename):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
 	
 	temp_graf = Graf()
-	temp_graf.load_hdf(file_handle)
+	temp_graf.read_graf(filename)
 	return temp_graf.to_fig()
 
 # def write_json_GrAF(figure, file_handle):
