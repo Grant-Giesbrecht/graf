@@ -975,12 +975,13 @@ class Scale(Packable):
 		self.minor_tick_list = []
 		self.tick_label_list = []
 		self.label = ""
+		self.scale_type = "linear"
 		
 		if ax is not None:
 			self.mimic(ax, scale_id)
 	
 	def set_manifest(self):
-		
+ 
 		self.manifest.append("is_valid")
 		self.manifest.append("val_min")
 		self.manifest.append("val_max")
@@ -988,6 +989,7 @@ class Scale(Packable):
 		self.manifest.append("minor_tick_list")
 		self.manifest.append("tick_label_list")
 		self.manifest.append("label")
+		self.manifest.append("scale_type")
 		
 	
 	def mimic(self, ax, scale_id:int):
@@ -1035,32 +1037,10 @@ class Scale(Packable):
 				self.scale_type = "linear"
 		else:
 			print(f"ERROR: Unrecognized Scale-id: {scale_id}")
-		#TODO: Add Z-version
-	
-	def _is_log(self):
-		''' Whether this axis should render on a log scale. Uses the captured
-		scale_type when available, then falls back to a heuristic so files saved
-		before scale_type existed still render correctly. '''
-		# Explicit (set by mimic, and by unpack if you persist scale_type):
-		if str(getattr(self, "scale_type", "linear")).lower() == "log":
-			return True
-		# Log axes never include zero/negative values:
-		pos = [t for t in self.tick_list if isinstance(t, (int, float)) and t > 0]
-		if float(self.val_min) <= 0 and not pos:
-			return False
-		# Signal 1: matplotlib power-of-ten tick labels (e.g. $\\mathdefault{10^{1}}$):
-		for lb in (self.tick_label_list or []):
-			if isinstance(lb, str) and ("mathdefault" in lb or "10^" in lb):
-				return True
-		# Signal 2: ticks sit at consecutive decade ratios (×10):
-		if len(pos) >= 2:
-			ratios = [pos[i + 1] / pos[i] for i in range(len(pos) - 1)]
-			if ratios and all(abs(r - 10.0) < 1e-6 for r in ratios):
-				return True
-		return False
  
 	def _log_safe_limits(self):
-		''' Limits guaranteed positive, so set_xlim won't choke on a log axis. '''
+		''' Keep limits strictly positive so set_*lim won't choke on a log axis
+		(e.g. if scale_type was edited to "log" on data that includes <= 0). '''
 		lo = float(self.val_min)
 		hi = float(self.val_max)
 		pos = [t for t in self.tick_list if isinstance(t, (int, float)) and t > 0]
@@ -1076,11 +1056,11 @@ class Scale(Packable):
  
 		self.gs = gstyle
 		local_font = self.gs.label_font.to_tuple()
-		use_log = self._is_log()
+		use_log = (str(self.scale_type).lower() == "log")
  
 		if scale_id == Scale.SCALE_ID_X:
 			if use_log:
-				ax.set_xscale("log")          # let the log locator/formatter handle ticks
+				ax.set_xscale("log")          # log locator/formatter handles the ticks
 			else:
 				ax.set_xscale("linear")
 				ax.set_xticks(self.tick_list)
