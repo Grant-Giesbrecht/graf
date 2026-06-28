@@ -991,9 +991,7 @@ class Scale(Packable):
 		
 	
 	def mimic(self, ax, scale_id:int):
-		
-		print(f"scale mimicing axis.")
-		
+ 
 		if scale_id == Scale.SCALE_ID_X:
 			self.is_valid = True
 			xlim_tuple = ax.get_xlim()
@@ -1003,7 +1001,11 @@ class Scale(Packable):
 			self.minor_tick_list = []
 			self.tick_label_list = [x.get_text() for x in ax.get_xticklabels()]
 			self.label = str(ax.get_xlabel())
-		
+			try:
+				self.scale_type = str(ax.get_xscale())
+			except Exception:
+				self.scale_type = "linear"
+ 
 		elif scale_id == Scale.SCALE_ID_Y:
 			self.is_valid = True
 			ylim_tuple = ax.get_ylim()
@@ -1013,7 +1015,11 @@ class Scale(Packable):
 			self.minor_tick_list = []
 			self.tick_label_list = [x.get_text() for x in ax.get_yticklabels()]
 			self.label = str(ax.get_ylabel())
-		
+			try:
+				self.scale_type = str(ax.get_yscale())
+			except Exception:
+				self.scale_type = "linear"
+ 
 		elif scale_id == Scale.SCALE_ID_Z:
 			self.is_valid = True
 			zlim_tuple = ax.get_zlim()
@@ -1023,46 +1029,114 @@ class Scale(Packable):
 			self.minor_tick_list = []
 			self.tick_label_list = [x.get_text() for x in ax.get_zticklabels()]
 			self.label = str(ax.get_zlabel())
+			try:
+				self.scale_type = str(ax.get_zscale())
+			except Exception:
+				self.scale_type = "linear"
 		else:
 			print(f"ERROR: Unrecognized Scale-id: {scale_id}")
 		#TODO: Add Z-version
 	
+	def _is_log(self):
+		''' Whether this axis should render on a log scale. Uses the captured
+		scale_type when available, then falls back to a heuristic so files saved
+		before scale_type existed still render correctly. '''
+		# Explicit (set by mimic, and by unpack if you persist scale_type):
+		if str(getattr(self, "scale_type", "linear")).lower() == "log":
+			return True
+		# Log axes never include zero/negative values:
+		pos = [t for t in self.tick_list if isinstance(t, (int, float)) and t > 0]
+		if float(self.val_min) <= 0 and not pos:
+			return False
+		# Signal 1: matplotlib power-of-ten tick labels (e.g. $\\mathdefault{10^{1}}$):
+		for lb in (self.tick_label_list or []):
+			if isinstance(lb, str) and ("mathdefault" in lb or "10^" in lb):
+				return True
+		# Signal 2: ticks sit at consecutive decade ratios (×10):
+		if len(pos) >= 2:
+			ratios = [pos[i + 1] / pos[i] for i in range(len(pos) - 1)]
+			if ratios and all(abs(r - 10.0) < 1e-6 for r in ratios):
+				return True
+		return False
+ 
+	def _log_safe_limits(self):
+		''' Limits guaranteed positive, so set_xlim won't choke on a log axis. '''
+		lo = float(self.val_min)
+		hi = float(self.val_max)
+		pos = [t for t in self.tick_list if isinstance(t, (int, float)) and t > 0]
+		if hi <= 0:
+			hi = max(pos) if pos else 1.0
+		if lo <= 0:
+			lo = min(pos) if pos else hi / 1000.0
+		if lo <= 0 or lo >= hi:
+			lo = hi / 1000.0
+		return lo, hi
+	
 	def apply_to(self, ax, gstyle:GraphStyle, scale_id:int):
-		
+ 
 		self.gs = gstyle
-		
 		local_font = self.gs.label_font.to_tuple()
-		
+		use_log = self._is_log()
+ 
 		if scale_id == Scale.SCALE_ID_X:
-			ax.set_xticks(self.tick_list)
-			ax.set_xticklabels(self.tick_label_list)
-			
+			if use_log:
+				ax.set_xscale("log")          # let the log locator/formatter handle ticks
+			else:
+				ax.set_xscale("linear")
+				ax.set_xticks(self.tick_list)
+				ax.set_xticklabels(self.tick_label_list)
+ 
 			if local_font is not None:
 				ax.set_xlabel(self.label, fontproperties=local_font[0], size=local_font[1])
 			else:
 				ax.set_xlabel(self.label)
-			ax.set_xlim([self.val_min, self.val_max])
+ 
+			if use_log:
+				lo, hi = self._log_safe_limits()
+				ax.set_xlim([lo, hi])
+			else:
+				ax.set_xlim([self.val_min, self.val_max])
+ 
 		elif scale_id == Scale.SCALE_ID_Y:
-			
-			ax.set_yticks(self.tick_list)
-			ax.set_yticklabels(self.tick_label_list)
-			
+			if use_log:
+				ax.set_yscale("log")
+			else:
+				ax.set_yscale("linear")
+				ax.set_yticks(self.tick_list)
+				ax.set_yticklabels(self.tick_label_list)
+ 
 			if local_font is not None:
 				ax.set_ylabel(self.label, fontproperties=local_font[0], size=local_font[1])
 			else:
 				ax.set_ylabel(self.label)
-			ax.set_ylim([self.val_min, self.val_max])
-		
+ 
+			if use_log:
+				lo, hi = self._log_safe_limits()
+				ax.set_ylim([lo, hi])
+			else:
+				ax.set_ylim([self.val_min, self.val_max])
+ 
 		elif scale_id == Scale.SCALE_ID_Z:
-			
-			ax.set_zticks(self.tick_list)
-			ax.set_zticklabels(self.tick_label_list)
-			
+			if use_log:
+				try:
+					ax.set_zscale("log")
+				except Exception:
+					ax.set_zticks(self.tick_list)
+					ax.set_zticklabels(self.tick_label_list)
+			else:
+				ax.set_zticks(self.tick_list)
+				ax.set_zticklabels(self.tick_label_list)
+ 
 			if local_font is not None:
 				ax.set_zlabel(self.label, fontproperties=local_font[0], size=local_font[1])
 			else:
 				ax.set_zlabel(self.label)
-			ax.set_zlim([self.val_min, self.val_max])
+ 
+			if use_log:
+				lo, hi = self._log_safe_limits()
+				ax.set_zlim([lo, hi])
+			else:
+				ax.set_zlim([self.val_min, self.val_max])
 			
 
 # TODO: Merge these with Axis.AXIS_LINE2D etc.
