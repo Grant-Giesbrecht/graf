@@ -22,6 +22,11 @@ from matplotlib.container import ErrorbarContainer
 import warnings
 import numpy as np
 from colorama import Fore, Style
+import hashlib
+import platform
+import socket
+import sys
+import datetime
 
 ## TODO:
 # 1. Add error bars or shading support
@@ -31,9 +36,153 @@ from colorama import Fore, Style
 #
 
 GRAF_VERSION = "0.0.0"
+PROVENANCE_SCHEMA = "1.0"   # version of the info.provenance / info.history layout
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
 MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "|", "_", "*", "None"]
 FONT_TYPES = ['regular', 'bold', 'italic']
+
+# ==============================================================================
+# Provenance helpers
+# ------------------------------------------------------------------------------
+# GrAF is meant to be a self-describing archive: the plot AND its data, openable
+# later on any machine without the original toolchain. Provenance metadata is
+# what makes that promise real rather than aspirational — it records where a file
+# came from and what has happened to it. The rules:
+#   * Creation provenance (info.provenance) is written ONCE, the first time a
+#     Graf is persisted, and is thereafter immutable.
+#   * Mutation history (info.history) is append-only: one flat record per save
+#     that actually changed the data, never rewritten or removed.
+# Everything is stamped inside Graf.write_graf (the single write choke point), so
+# a file cannot be saved without being stamped and no caller has to remember to.
+# Values are kept flat (str / number) so they survive the TOME round-trip and
+# stay readable in a structure browser.
+# ==============================================================================
+
+def _utc_now_iso() -> str:
+	"""ISO-8601 timestamp in UTC, e.g. '2026-07-01T14:22:05+00:00'."""
+	return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _library_identity() -> str:
+	"""Identity of the library doing the writing (not the app on top of it)."""
+	return f"GrAF {GRAF_VERSION} (Python {platform.python_version()})"
+
+
+def _creating_script() -> str:
+	"""Best-effort basename of the entry-point script that is running, so a file
+	can say which program produced it. Full paths are deliberately NOT stored
+	(they leak directory structure and are meaningless on another machine)."""
+	try:
+		import __main__
+		p = getattr(__main__, "__file__", None)
+		if p:
+			return os.path.basename(p)
+	except Exception:
+		pass
+	try:
+		if sys.argv and sys.argv[0]:
+			return os.path.basename(sys.argv[0])
+	except Exception:
+		pass
+	return ""
+
+
+def _cpu_model() -> str:
+	"""Best-effort human-readable CPU model string, for retroactively working out
+	which workstation produced a file. Falls back to the architecture."""
+	try:
+		sysname = platform.system()
+		if sysname == "Linux":
+			try:
+				with open("/proc/cpuinfo") as fh:
+					for line in fh:
+						if line.lower().startswith("model name"):
+							return line.split(":", 1)[1].strip()
+			except Exception:
+				pass
+		elif sysname == "Darwin":
+			try:
+				import subprocess
+				out = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+									 capture_output=True, text=True, timeout=1.5)
+				if out.returncode == 0 and out.stdout.strip():
+					return out.stdout.strip()
+			except Exception:
+				pass
+		elif sysname == "Windows":
+			v = os.environ.get("PROCESSOR_IDENTIFIER", "")
+			if v:
+				return v
+		return platform.processor() or platform.machine() or ""
+	except Exception:
+		return ""
+
+
+def _system_info() -> dict:
+	"""Machine identity for retroactive workstation tracking. This is mildly
+	identifying (hostname, CPU) but intended for a personal/internal archive;
+	pass include_system_info=False to write_graf/save_graf to omit it. Username
+	is intentionally NOT collected."""
+	info = {}
+	try:
+		info["hostname"] = socket.gethostname()
+	except Exception:
+		pass
+	try:
+		info["os_platform"] = platform.platform()
+	except Exception:
+		pass
+	try:
+		info["machine_arch"] = platform.machine()
+	except Exception:
+		pass
+	cpu = _cpu_model()
+	if cpu:
+		info["cpu_model"] = cpu
+	return info
+
+
+def _json_default(o):
+	"""Coerce numpy / bytes / complex into JSON-safe values for stable hashing."""
+	if isinstance(o, np.ndarray):
+		return o.tolist()
+	if isinstance(o, np.integer):
+		return int(o)
+	if isinstance(o, np.floating):
+		return float(o)
+	if isinstance(o, (np.bool_, bool)):
+		return bool(o)
+	if isinstance(o, (bytes, bytearray, np.bytes_)):
+		try:
+			return bytes(o).decode("utf-8")
+		except Exception:
+			return bytes(o).decode("latin-1", "replace")
+	if isinstance(o, complex):
+		return [o.real, o.imag]
+	return str(o)
+
+
+def _stable_content_hash(obj) -> str:
+	"""Deterministic SHA-256 of a packed structure (keys sorted). Used to detect
+	whether the data actually changed between saves, and to fingerprint content."""
+	try:
+		blob = json.dumps(obj, sort_keys=True, default=_json_default,
+						  ensure_ascii=False).encode("utf-8")
+		return hashlib.sha256(blob).hexdigest()
+	except Exception:
+		return ""
+
+
+def _sha256_file(path: str) -> str:
+	"""SHA-256 of a source file's bytes (for verifiable 'this came from that')."""
+	try:
+		h = hashlib.sha256()
+		with open(path, "rb") as fh:
+			for chunk in iter(lambda: fh.read(1 << 20), b""):
+				h.update(chunk)
+		return h.hexdigest()
+	except Exception:
+		return ""
 
 try:
 	# Requires Python >= 3.9
@@ -1451,6 +1600,10 @@ class MetaInfo(Packable):
 		self.source_version = "0.0.0"
 		self.description = description
 		self.conditions = conditions
+		# Provenance (see the helper block near the top of this file). These are
+		# populated/appended automatically by Graf.write_graf, never by the user.
+		self.provenance = {}   # immutable creation record (written once)
+		self.history = []      # append-only list of flat mutation records
 	
 	def set_manifest(self):
 		self.manifest.append("version")
@@ -1459,6 +1612,8 @@ class MetaInfo(Packable):
 		self.manifest.append("source_version")
 		self.manifest.append("description")
 		self.manifest.append("conditions")
+		self.manifest.append("provenance")
+		self.manifest.append("history")
 	
 class Graf(Packable):
 	""" Class used to read, write and extract data from GrAF files.
@@ -1728,7 +1883,96 @@ class Graf(Packable):
 		# Return newly created figure
 		return gen_fig
 	
-	def write_graf(self, filename:str):
+	def _data_hash(self):
+		"""SHA-256 of the graph's data, excluding the volatile provenance/history
+		blocks, so it reflects only whether the actual figure content changed."""
+		try:
+			pkt = self.pack()
+			info = pkt.get("info")
+			if isinstance(info, dict):
+				info.pop("provenance", None)
+				info.pop("history", None)
+			return _stable_content_hash(pkt)
+		except Exception:
+			return ""
+
+	def _stamp_provenance(self, content_hash="", source_app=None, action=None,
+						  source_file=None, source_format=None,
+						  include_system_info=True):
+		"""Populate the immutable creation record (once) and append a history
+		entry when the data has changed (or an explicit action was given).
+		Called only from write_graf so every persisted file is stamped."""
+		info = self.info
+		# Defensive: files predating provenance won't have these attributes.
+		if not hasattr(info, "provenance") or not isinstance(info.provenance, dict):
+			info.provenance = {}
+		if not hasattr(info, "history") or not isinstance(info.history, list):
+			info.history = []
+
+		now = _utc_now_iso()
+
+		# ---- creation record: write exactly once -----------------------------
+		if not info.provenance:
+			prov = {
+				"provenance_schema": PROVENANCE_SCHEMA,
+				"created_utc": now,
+				"created_by": _library_identity(),
+				"graf_version": GRAF_VERSION,
+				"source_language": getattr(info, "source_language", "Python"),
+				"creating_script": _creating_script(),
+			}
+			if source_app:
+				prov["created_by_app"] = str(source_app)
+			if source_format:
+				prov["source_format"] = str(source_format)
+			if source_file:
+				prov["source_filename"] = os.path.basename(str(source_file))
+				sh = _sha256_file(source_file)
+				if sh:
+					prov["source_sha256"] = sh
+			if include_system_info:
+				prov.update(_system_info())
+			info.provenance = prov
+
+		# ---- history: append-only, gated on real change ----------------------
+		first = not info.history
+		last_hash = info.history[-1].get("content_sha256") if info.history else None
+		changed = bool(content_hash) and content_hash != last_hash
+		if first or changed or action:
+			entry = {
+				"utc": now,
+				"action": str(action) if action else ("created" if first else "saved"),
+				"by": _library_identity(),
+				"content_sha256": content_hash,
+			}
+			if source_app:
+				entry["app"] = str(source_app)
+			info.history.append(entry)
+
+	def write_graf(self, filename:str, *, source_app:str=None, action:str=None,
+				   source_file:str=None, source_format:str=None,
+				   include_system_info:bool=True):
+		"""Serialize this Graf to a TOME file.
+
+		Provenance is stamped automatically here (the single write choke point):
+		the creation record is written on first save and an append-only history
+		entry is added whenever the data has changed. Optional arguments let a
+		calling app identify itself and, for conversions, name the source:
+		  source_app          : e.g. 'graf_explorer 1.3.0' (recorded in provenance
+		                        and in the history entry for this save)
+		  action              : short label for this save, e.g. 'edited trace data'
+		  source_file         : path to a file this GrAF was converted from
+		                        (basename + SHA-256 are recorded, not the path)
+		  source_format       : e.g. 'touchstone_s2p', 'csv'
+		  include_system_info : stamp hostname / OS / CPU (default True); set
+		                        False to omit for privacy.
+		"""
+		# Hash the data BEFORE stamping (stamping mutates provenance/history).
+		content_hash = self._data_hash()
+		self._stamp_provenance(content_hash=content_hash, source_app=source_app,
+							   action=action, source_file=source_file,
+							   source_format=source_format,
+							   include_system_info=include_system_info)
 		datapacket = self.pack()
 		try:
 			dict_summary(datapacket, verbose=1) #TODO: Make this a flag
@@ -1748,11 +1992,18 @@ def save_pklfig(figure, filename): #:matplotlib.figure.Figure, file_handle):
 	with open(filename, 'w') as fh:
 		pickle.dump(figure, fh)
 
-def save_graf(figure, filename, description:str="", conditions:dict={}):
-	''' Writes the contents of a matplotlib figure to a GrAF file. '''
+def save_graf(figure, filename, description:str="", conditions:dict={},
+			  source_app:str=None, source_file:str=None, source_format:str=None,
+			  action:str=None, include_system_info:bool=True):
+	''' Writes the contents of a matplotlib figure to a GrAF file.
+
+	source_app / source_file / source_format / action / include_system_info are
+	forwarded to write_graf for provenance stamping (see write_graf). '''
 	
 	temp_graf = Graf(figure, description=description, conditions=conditions)
-	temp_graf.write_graf(filename)
+	temp_graf.write_graf(filename, source_app=source_app, source_file=source_file,
+						 source_format=source_format or "matplotlib_figure",
+						 action=action, include_system_info=include_system_info)
 
 def load_graf(filename):
 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
