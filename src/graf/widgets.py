@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 	QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
 	QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog, QMessageBox,
 )
+from PyQt6.QtGui import QIcon
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
@@ -43,13 +44,25 @@ _EXT_BY_FILTER = {
 	"JPEG image (*.jpg)": ".jpg",
 }
 
+_ICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "grs.png")
+
+
+def _load_icon() -> QIcon:
+	''' Loads the window/taskbar/dock icon shared by every window we open. '''
+
+	return QIcon(_ICON_PATH)
+
 
 def _ensure_qapp() -> QApplication:
-	''' Returns the existing QApplication instance, creating one if none exists yet. '''
+	''' Returns the existing QApplication instance, creating one if none exists yet.
+	Also sets the app-wide icon (used as the taskbar/dock icon on most platforms)
+	since the qtagg backend may have already created the QApplication before we
+	get a chance to configure it. '''
 
 	app = QApplication.instance()
 	if app is None:
 		app = QApplication(sys.argv)
+	app.setWindowIcon(_load_icon())
 	return app
 
 
@@ -77,6 +90,7 @@ class AxisBoundsDialog(QDialog):
 			grid_checked=False, legend_checked=False, on_toggle_grid=None, on_toggle_legend=None):
 		super().__init__(parent)
 		self.setWindowTitle("Edit Axis Bounds")
+		self.setWindowIcon(_load_icon())
 
 		self.fig = fig
 		self.on_apply = on_apply
@@ -218,6 +232,7 @@ class GrafWindow(QMainWindow):
 		self._axis_dialog = None
 
 		self.setWindowTitle(title)
+		self.setWindowIcon(_load_icon())
 
 		self._build_canvas()
 		self._original_limits = {ax: (ax.get_xlim(), ax.get_ylim()) for ax in fig.get_axes()}
