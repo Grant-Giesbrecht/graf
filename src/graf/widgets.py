@@ -18,6 +18,7 @@ top of that toolbar we add:
 
 import os
 import sys
+from mplcursors import cursor
 
 from PyQt6.QtWidgets import (
 	QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -130,11 +131,15 @@ class AxisBoundsDialog(QDialog):
 		controls.addWidget(self.legend_checkbox)
 
 		reset_button = QPushButton("Reset Axes")
+		reset_button.setAutoDefault(False)
+		reset_button.setDefault(False)
 		reset_button.clicked.connect(self._on_reset_clicked)
 		controls.addWidget(reset_button)
 		controls.addStretch()
 
 		close_button = QPushButton("Close")
+		close_button.setAutoDefault(False)
+		close_button.setDefault(False)
 		close_button.clicked.connect(self.close)
 
 		layout = QVBoxLayout()
@@ -235,7 +240,7 @@ class GrafWindow(QMainWindow):
 		edit_axes_button.clicked.connect(self._on_edit_axes)
 		nav.addWidget(edit_axes_button)
 
-		save_button = QPushButton("Save Graf")
+		save_button = QPushButton("Save GrAF")
 		save_button.clicked.connect(self._on_save)
 		nav.addWidget(save_button)
 
@@ -278,7 +283,7 @@ class GrafWindow(QMainWindow):
 	def _on_save(self):
 
 		filename, selected_filter = QFileDialog.getSaveFileName(
-			self, "Save Graf", self.default_filename, _GRAF_FILTER, _GRAF_FILTER.split(";;")[0],
+			self, "Save GrAF", self.default_filename, _GRAF_FILTER, _GRAF_FILTER.split(";;")[0],
 		)
 		if not filename:
 			return
@@ -321,7 +326,41 @@ class GrafWindow(QMainWindow):
 		self._app.exec()
 
 
-def show_graf(fig:Figure, save_graf=None, title:str="Graf", default_filename:str="figure"):
+def _attach_cursor(fig:Figure):
+	''' Attaches an mplcursors cursor that snaps only to actual data points.
+
+	mplcursors' default Line2D picker also projects the cursor onto the
+	rendered path (see mplcursors/_pick_info.py, compute_pick for Line2D),
+	and that projected point almost always beats the nearest-vertex match
+	except exactly at a vertex - that's why hovering anywhere along a plain
+	connecting line matches. That projection branch only runs when the
+	artist's linestyle isn't "None", so instead of attaching to the visible
+	line, we attach to an invisible, marker-only companion artist per line
+	(same data, linestyle="None") - that leaves only the nearest-vertex
+	branch, and the original line's look is untouched. '''
+
+	pickable = []
+	label_by_marker = {}
+	for ax in fig.get_axes():
+		for line in list(ax.get_lines()):
+			marker_artist, = ax.plot(
+				*line.get_data(), linestyle="None", marker="o", markersize=4,
+				color=line.get_color(), alpha=0, label="_nolegend_",
+			)
+			pickable.append(marker_artist)
+			label_by_marker[marker_artist] = line.get_label()
+
+	c = cursor(pickable, multiple=True)
+
+	@c.connect("add")
+	def _(sel):
+		label = label_by_marker.get(sel.artist)
+		if label and not label.startswith("_"):
+			sel.annotation.set_text(f"{label}\n{sel.annotation.get_text()}")
+
+
+def rich_show(fig:Figure, save_graf=None, title:str="Graf", default_filename:str="figure"):
 	''' Convenience wrapper: builds a GrafWindow around fig and immediately shows it. '''
 
+	_attach_cursor(fig)
 	GrafWindow(fig, save_graf=save_graf, title=title, default_filename=default_filename).show()

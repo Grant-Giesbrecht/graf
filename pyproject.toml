@@ -20,7 +20,8 @@ dependencies = [
 	'h5py >= 3.11.0',
 	'matplotlib >= 3.9.0',
 	'stardust-tools >= 0.0.0',
-	'PyQt6 >= 6.4.0'
+	'PyQt6 >= 6.4.0',
+	'mplcursors >= 0.7'
 ]
 
 
