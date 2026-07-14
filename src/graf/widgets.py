@@ -1,111 +1,171 @@
 ''' GUI wrapper for matplotlib figures.
 
-Embeds a Figure in a Tkinter window alongside matplotlib's own pan/zoom
-toolbar, plus:
+Embeds a Figure in a Qt window using matplotlib's own Qt toolbar
+(NavigationToolbar2QT - the same toolbar plt.show() uses with the "qtagg"
+backend), so the window matches the native look, includes matplotlib's
+full button set (including "Customize", which the Tk backend never
+implemented), and inherits the OS's dark/light theme automatically. On
+top of that toolbar we add:
 
 * "Save Graf" - opens a native save dialog (format chosen via the
-  filetype dropdown, defaulting to .graf) and calls save_graf(fig, filename).
+  filetype filter, defaulting to .graf) and calls save_graf(fig, filename).
 * "Edit Axes" - opens a popup window with entry fields for editing the
-  x/y bounds of every Axes in the figure; changes apply on Enter or when
-  a field loses focus.
-* "Reset Axes" - restores every Axes to the limits it had when the
-  window was first built.
-* "Grid" / "Legend" checkboxes - toggle the grid and legend for every
-  Axes in the figure.
+  x/y bounds of every Axes in the figure (changes apply on Enter or when
+  a field loses focus), plus Grid / Legend checkboxes, a Reset Axes
+  button (restores every Axes to the limits it had when the window was
+  first built), and a Close button.
 '''
 
 import os
-import pickle
-from graf.base import save_graf as _save_graf
+import sys
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from PyQt6.QtWidgets import (
+	QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
+	QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog, QMessageBox,
+)
 
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 
-
-# Save-dialog filetype dropdown, in display order. ".graf" is listed first
-# so it's the dialog's default selection.
-_GRAF_FORMATS = [
-	("GrAF format", "*.graf"),
-	("PNG image", "*.png"),
-	("SVG vector", "*.svg"),
-	("PDF document", "*.pdf"),
-	("JPEG image", "*.jpg"),
-]
+from graf.base import save_graf as _save_graf
 
 
-# def _default_save_graf(fig:Figure, filename:str):
-# 	''' Placeholder used until the real save_graf (from the GrAF package) is
-# 	importable. Handles the standard matplotlib formats directly, and falls
-# 	back to pickling the Figure for the ".graf" extension. '''
-# 
-# 	ext = os.path.splitext(filename)[1].lower().lstrip(".")
-# 	if ext == "graf":
-# 		with open(filename, "wb") as f:
-# 			pickle.dump(fig, f)
-# 	else:
-# 		fig.savefig(filename)
+# Save-dialog filter string, in display order. "GrAF format" is listed
+# first so it's the dialog's default selection.
+_GRAF_FILTER = "GrAF format (*.graf);;PNG image (*.png);;SVG vector (*.svg);;PDF document (*.pdf);;JPEG image (*.jpg)"
+
+_EXT_BY_FILTER = {
+	"GrAF format (*.graf)": ".graf",
+	"PNG image (*.png)": ".png",
+	"SVG vector (*.svg)": ".svg",
+	"PDF document (*.pdf)": ".pdf",
+	"JPEG image (*.jpg)": ".jpg",
+}
 
 
+def _ensure_qapp() -> QApplication:
+	''' Returns the existing QApplication instance, creating one if none exists yet. '''
+
+	app = QApplication.instance()
+	if app is None:
+		app = QApplication(sys.argv)
+	return app
 
 
+class _FocusLineEdit(QLineEdit):
+	''' QLineEdit that also applies on focus-out, matching the behavior of
+	applying edits when a field loses focus (not just on Enter). '''
 
-class AxisBoundsDialog(tk.Toplevel):
+	def __init__(self, *args, on_focus_out=None, **kwargs):
+		super().__init__(*args, **kwargs)
+		self._on_focus_out = on_focus_out
+
+	def focusOutEvent(self, event):
+		super().focusOutEvent(event)
+		if self._on_focus_out is not None:
+			self._on_focus_out()
+
+
+class AxisBoundsDialog(QDialog):
 	''' Popup window for editing the x/y limits of every Axes in a figure.
 	Each row applies independently when its fields are submitted (Enter)
-	or lose focus (clicking elsewhere). '''
+	or lose focus (clicking elsewhere). Also hosts the Grid/Legend toggles
+	and the Reset Axes button, since they act on the same Axes set. '''
 
-	def __init__(self, master, fig:Figure, on_apply=None):
-		super().__init__(master)
-		self.title("Edit Axis Bounds")
-		self.resizable(False, False)
+	def __init__(self, parent, fig:Figure, on_apply=None, on_reset=None,
+			grid_checked=False, legend_checked=False, on_toggle_grid=None, on_toggle_legend=None):
+		super().__init__(parent)
+		self.setWindowTitle("Edit Axis Bounds")
 
 		self.fig = fig
 		self.on_apply = on_apply
-		self.entries = {}  # Axes -> (x_min, x_max, y_min, y_max) Entry widgets
+		self.on_reset = on_reset
+		self.on_toggle_grid = on_toggle_grid
+		self.on_toggle_legend = on_toggle_legend
+		self.entries = {}  # Axes -> (x_min, x_max, y_min, y_max) QLineEdit widgets
 
-		self._build()
+		self._build(grid_checked, legend_checked)
 
-	def _build(self):
+	def _build(self, grid_checked, legend_checked):
 
 		axes = self.fig.get_axes()
 
+		grid = QGridLayout()
 		header = ("", "x min", "x max", "y min", "y max")
 		for col, text in enumerate(header):
-			tk.Label(self, text=text, font=("TkDefaultFont", 9, "bold")).grid(row=0, column=col, padx=4, pady=(6, 2))
+			label = QLabel(text)
+			font = label.font()
+			font.setBold(True)
+			label.setFont(font)
+			grid.addWidget(label, 0, col)
 
 		for row, ax in enumerate(axes, start=1):
 
-			label = ax.get_title() or ax.get_label() or f"Axes {row}"
-			tk.Label(self, text=label).grid(row=row, column=0, sticky="w", padx=4)
+			label_text = ax.get_title() or ax.get_label() or f"Axes {row}"
+			grid.addWidget(QLabel(label_text), row, 0)
 
 			x_min, x_max = ax.get_xlim()
 			y_min, y_max = ax.get_ylim()
 
 			field_entries = []
 			for col, value in enumerate((x_min, x_max, y_min, y_max), start=1):
-				entry = tk.Entry(self, width=10)
-				entry.insert(0, f"{value:g}")
-				entry.grid(row=row, column=col, padx=4, pady=2)
-				entry.bind("<Return>", lambda event, ax=ax: self._apply_axes(ax))
-				entry.bind("<FocusOut>", lambda event, ax=ax: self._apply_axes(ax))
+				entry = _FocusLineEdit(f"{value:g}", on_focus_out=lambda ax=ax: self._apply_axes(ax))
+				entry.setFixedWidth(70)
+				entry.returnPressed.connect(lambda ax=ax: self._apply_axes(ax))
+				grid.addWidget(entry, row, col)
 				field_entries.append(entry)
 
 			self.entries[ax] = tuple(field_entries)
 
-		button_row = len(axes) + 1
-		ttk.Button(self, text="Close", command=self.destroy).grid(row=button_row, column=0, columnspan=5, pady=8)
+		controls = QHBoxLayout()
+
+		self.grid_checkbox = QCheckBox("Grid")
+		self.grid_checkbox.setChecked(grid_checked)
+		self.grid_checkbox.toggled.connect(self._on_grid_toggled)
+		controls.addWidget(self.grid_checkbox)
+
+		self.legend_checkbox = QCheckBox("Legend")
+		self.legend_checkbox.setChecked(legend_checked)
+		self.legend_checkbox.toggled.connect(self._on_legend_toggled)
+		controls.addWidget(self.legend_checkbox)
+
+		reset_button = QPushButton("Reset Axes")
+		reset_button.clicked.connect(self._on_reset_clicked)
+		controls.addWidget(reset_button)
+		controls.addStretch()
+
+		close_button = QPushButton("Close")
+		close_button.clicked.connect(self.close)
+
+		layout = QVBoxLayout()
+		layout.addLayout(grid)
+		layout.addLayout(controls)
+		layout.addWidget(close_button)
+		self.setLayout(layout)
+
+	def _on_grid_toggled(self, checked):
+
+		if self.on_toggle_grid is not None:
+			self.on_toggle_grid(checked)
+
+	def _on_legend_toggled(self, checked):
+
+		if self.on_toggle_legend is not None:
+			self.on_toggle_legend(checked)
+
+	def _on_reset_clicked(self):
+
+		if self.on_reset is not None:
+			self.on_reset()
 
 	def _apply_axes(self, ax):
 
 		e_xmin, e_xmax, e_ymin, e_ymax = self.entries[ax]
 		try:
-			x_min = float(e_xmin.get())
-			x_max = float(e_xmax.get())
-			y_min = float(e_ymin.get())
-			y_max = float(e_ymax.get())
+			x_min = float(e_xmin.text())
+			x_max = float(e_xmax.text())
+			y_min = float(e_ymin.text())
+			y_max = float(e_ymax.text())
 		except ValueError:
 			# Leave the figure untouched while a field is mid-edit / invalid.
 			return
@@ -124,34 +184,35 @@ class AxisBoundsDialog(tk.Toplevel):
 			x_min, x_max = ax.get_xlim()
 			y_min, y_max = ax.get_ylim()
 			for entry, value in zip((e_xmin, e_xmax, e_ymin, e_ymax), (x_min, x_max, y_min, y_max)):
-				entry.delete(0, tk.END)
-				entry.insert(0, f"{value:g}")
+				entry.setText(f"{value:g}")
 
 
-class GrafWindow:
-	''' Embeds a matplotlib Figure in a Tkinter window with a toolbar
-	that can save the figure, edit its axis bounds, reset them, and
-	toggle the grid/legend.
+class GrafWindow(QMainWindow):
+	''' Embeds a matplotlib Figure in a Qt window with matplotlib's own
+	Qt toolbar (NavigationToolbar2QT), plus buttons to save the figure and
+	edit its axis bounds (with grid/legend toggles and reset inside that
+	popup).
 
 	Args:
 		fig (Figure): Figure to display.
 		save_graf (callable): Function called as save_graf(fig, filename)
 			when the "Save Graf" button is pressed. Defaults to the
-			GrAF package's save_graf if importable, otherwise a local
-			fallback that handles common matplotlib formats.
+			GrAF package's save_graf.
 		title (str): Window title.
 		default_filename (str): Filename suggested in the save dialog.
 	'''
 
 	def __init__(self, fig:Figure, save_graf=None, title:str="Graf", default_filename:str="figure"):
 
+		self._app = _ensure_qapp()
+		super().__init__()
+
 		self.fig = fig
 		self.save_graf = save_graf if save_graf is not None else _save_graf
 		self.default_filename = default_filename
 		self._axis_dialog = None
 
-		self.root = tk.Tk()
-		self.root.title(title)
+		self.setWindowTitle(title)
 
 		self._build_canvas()
 		self._original_limits = {ax: (ax.get_xlim(), ax.get_ylim()) for ax in fig.get_axes()}
@@ -159,29 +220,27 @@ class GrafWindow:
 
 	def _build_canvas(self):
 
-		self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
-		self.canvas.draw()
-		self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+		self.canvas = FigureCanvasQTAgg(self.fig)
+		self.setCentralWidget(self.canvas)
 
 	def _build_toolbar(self):
 
-		bar = tk.Frame(self.root)
-		bar.pack(side=tk.BOTTOM, fill=tk.X)
+		# Matplotlib's own pan/zoom/subplots/customize/save-as-image toolbar
+		nav = NavigationToolbar2QT(self.canvas, self)
+		self.addToolBar(nav)
 
-		# Matplotlib's own pan/zoom/save-as-image toolbar
-		nav = NavigationToolbar2Tk(self.canvas, bar)
-		nav.update()
-		nav.pack(side=tk.LEFT)
+		nav.addSeparator()
 
-		self.grid_var = tk.BooleanVar(value=self._grid_is_on())
-		ttk.Checkbutton(bar, text="Grid", variable=self.grid_var, command=self._on_toggle_grid).pack(side=tk.LEFT, padx=(12, 4))
+		edit_axes_button = QPushButton("Edit Axes")
+		edit_axes_button.clicked.connect(self._on_edit_axes)
+		nav.addWidget(edit_axes_button)
 
-		self.legend_var = tk.BooleanVar(value=self._legend_is_on())
-		ttk.Checkbutton(bar, text="Legend", variable=self.legend_var, command=self._on_toggle_legend).pack(side=tk.LEFT, padx=4)
+		save_button = QPushButton("Save Graf")
+		save_button.clicked.connect(self._on_save)
+		nav.addWidget(save_button)
 
-		ttk.Button(bar, text="Save Graf", command=self._on_save).pack(side=tk.RIGHT, padx=4, pady=2)
-		ttk.Button(bar, text="Edit Axes", command=self._on_edit_axes).pack(side=tk.RIGHT, padx=4, pady=2)
-		ttk.Button(bar, text="Reset Axes", command=self._on_reset_axes).pack(side=tk.RIGHT, padx=4, pady=2)
+		self.grid_checked = self._grid_is_on()
+		self.legend_checked = self._legend_is_on()
 
 	def _grid_is_on(self) -> bool:
 
@@ -195,19 +254,19 @@ class GrafWindow:
 
 		return any(ax.get_legend() is not None and ax.get_legend().get_visible() for ax in self.fig.get_axes())
 
-	def _on_toggle_grid(self):
+	def _on_toggle_grid(self, checked):
 
-		show = self.grid_var.get()
+		self.grid_checked = checked
 		for ax in self.fig.get_axes():
-			ax.grid(show)
+			ax.grid(checked)
 		self.canvas.draw()
 
-	def _on_toggle_legend(self):
+	def _on_toggle_legend(self, checked):
 
-		show = self.legend_var.get()
+		self.legend_checked = checked
 		for ax in self.fig.get_axes():
 			legend = ax.get_legend()
-			if show:
+			if checked:
 				if legend is None:
 					ax.legend()
 				else:
@@ -218,27 +277,33 @@ class GrafWindow:
 
 	def _on_save(self):
 
-		filename = filedialog.asksaveasfilename(
-			initialfile=self.default_filename,
-			defaultextension=".graf",
-			filetypes=_GRAF_FORMATS,
+		filename, selected_filter = QFileDialog.getSaveFileName(
+			self, "Save Graf", self.default_filename, _GRAF_FILTER, _GRAF_FILTER.split(";;")[0],
 		)
 		if not filename:
 			return
 
+		ext = _EXT_BY_FILTER.get(selected_filter)
+		if ext and os.path.splitext(filename)[1].lower() != ext:
+			filename += ext
+
 		try:
 			self.save_graf(self.fig, filename)
 		except Exception as e:
-			messagebox.showerror("Save failed", str(e))
+			QMessageBox.critical(self, "Save failed", str(e))
 
 	def _on_edit_axes(self):
 
-		if self._axis_dialog is not None and self._axis_dialog.winfo_exists():
-			self._axis_dialog.lift()
-			self._axis_dialog.focus_force()
-			return
+		if self._axis_dialog is None:
+			self._axis_dialog = AxisBoundsDialog(
+				self, self.fig, on_apply=self.canvas.draw, on_reset=self._on_reset_axes,
+				grid_checked=self.grid_checked, legend_checked=self.legend_checked,
+				on_toggle_grid=self._on_toggle_grid, on_toggle_legend=self._on_toggle_legend,
+			)
 
-		self._axis_dialog = AxisBoundsDialog(self.root, self.fig, on_apply=self.canvas.draw)
+		self._axis_dialog.show()
+		self._axis_dialog.raise_()
+		self._axis_dialog.activateWindow()
 
 	def _on_reset_axes(self):
 
@@ -247,12 +312,13 @@ class GrafWindow:
 			ax.set_ylim(ylim)
 		self.canvas.draw()
 
-		if self._axis_dialog is not None and self._axis_dialog.winfo_exists():
+		if self._axis_dialog is not None:
 			self._axis_dialog.refresh()
 
 	def show(self):
-		''' Starts the Tkinter event loop. Blocks until the window is closed. '''
-		self.root.mainloop()
+		''' Displays the window and starts the Qt event loop. Blocks until the window is closed. '''
+		super().show()
+		self._app.exec()
 
 
 def show_graf(fig:Figure, save_graf=None, title:str="Graf", default_filename:str="figure"):
