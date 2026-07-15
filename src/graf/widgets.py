@@ -22,8 +22,9 @@ from mplcursors import cursor
 
 from PyQt6.QtWidgets import (
 	QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
-	QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog, QMessageBox,
+	QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog, QMessageBox, QComboBox,
 )
+from PyQt6.QtCore import QSettings
 from PyQt6.QtGui import QIcon
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
@@ -46,11 +47,36 @@ _EXT_BY_FILTER = {
 
 _ICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "grs.png")
 
+# Persisted (QSettings) UI scale, applied on top of the figure's own dpi.
+# Lets a user compensate for e.g. an over/under-sized default on their display
+# without editing rcParams; see GrafWindow._apply_scale.
+_SETTINGS_ORG = "GrAF"
+_SETTINGS_APP = "GrafWidgets"
+_SCALE_SETTINGS_KEY = "ui_scale"
+_SCALE_OPTIONS = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+_DEFAULT_SCALE = 1.0
+
 
 def _load_icon() -> QIcon:
 	''' Loads the window/taskbar/dock icon shared by every window we open. '''
 
 	return QIcon(_ICON_PATH)
+
+
+def _load_saved_scale() -> float:
+	''' Reads the user's last-chosen UI scale from QSettings (1.0 if never set). '''
+
+	settings = QSettings(_SETTINGS_ORG, _SETTINGS_APP)
+	try:
+		return float(settings.value(_SCALE_SETTINGS_KEY, _DEFAULT_SCALE))
+	except (TypeError, ValueError):
+		return _DEFAULT_SCALE
+
+
+def _save_scale(scale: float):
+	''' Persists the user's chosen UI scale via QSettings so it's remembered next launch. '''
+
+	QSettings(_SETTINGS_ORG, _SETTINGS_APP).setValue(_SCALE_SETTINGS_KEY, scale)
 
 
 def _ensure_qapp() -> QApplication:
@@ -236,11 +262,30 @@ class GrafWindow(QMainWindow):
 
 		self._build_canvas()
 		self._original_limits = {ax: (ax.get_xlim(), ax.get_ylim()) for ax in fig.get_axes()}
+		self.scale = _load_saved_scale()
+		self._apply_scale(self.scale)
 		self._build_toolbar()
 
 	def _build_canvas(self):
 
-		self.canvas = FigureCanvasQTAgg(self.fig)
+		# Reuse the figure's existing Qt canvas if it already has one (e.g.
+		# pyplot attached one via plt.subplots()) rather than attaching a
+		# second one. matplotlib records figure._original_dpi the moment any
+		# canvas is attached (FigureCanvasBase.__init__), then multiplies it
+		# by the screen's device pixel ratio on HiDPI displays. Attaching a
+		# second canvas to a figure whose dpi was already scaled up (e.g. by
+		# an earlier canvas's Retina handshake) makes that already-doubled
+		# dpi the new "original", so our own canvas's HiDPI handshake doubles
+		# it again - fonts/linewidths end up ~4x instead of ~2x. This is
+		# what caused everything to render oversized on macOS Retina displays.
+		if isinstance(self.fig.canvas, FigureCanvasQTAgg):
+			self.canvas = self.fig.canvas
+		else:
+			if hasattr(self.fig, "_original_dpi"):
+				self.fig.dpi = self.fig._original_dpi
+			self.canvas = FigureCanvasQTAgg(self.fig)
+
+		self._true_base_dpi = self.fig._original_dpi
 		self.setCentralWidget(self.canvas)
 
 	def _build_toolbar(self):
@@ -259,8 +304,36 @@ class GrafWindow(QMainWindow):
 		save_button.clicked.connect(self._on_save)
 		nav.addWidget(save_button)
 
+		nav.addSeparator()
+
+		scale_combo = QComboBox()
+		for option in _SCALE_OPTIONS:
+			scale_combo.addItem(f"{option:.0%}", option)
+		current_index = scale_combo.findData(self.scale)
+		scale_combo.setCurrentIndex(current_index if current_index >= 0 else scale_combo.findData(_DEFAULT_SCALE))
+		scale_combo.currentIndexChanged.connect(lambda i: self._on_scale_changed(scale_combo.itemData(i)))
+		nav.addWidget(scale_combo)
+
 		self.grid_checked = self._grid_is_on()
 		self.legend_checked = self._legend_is_on()
+
+	def _apply_scale(self, scale: float):
+		''' Applies a UI scale on top of the figure's true (unscaled) dpi,
+		combined with whatever HiDPI device-pixel-ratio matplotlib has
+		already applied. Overwriting figure._original_dpi (rather than just
+		figure.dpi) makes this survive future automatic dpi updates, e.g. if
+		the window is dragged to a screen with a different pixel ratio. '''
+
+		self.scale = scale
+		self.fig._original_dpi = self._true_base_dpi * scale
+		ratio = self.canvas.device_pixel_ratio
+		self.fig._set_dpi(ratio * self.fig._original_dpi, forward=True)
+		self.canvas.draw()
+
+	def _on_scale_changed(self, scale: float):
+
+		self._apply_scale(scale)
+		_save_scale(scale)
 
 	def _grid_is_on(self) -> bool:
 
