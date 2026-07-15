@@ -29,6 +29,7 @@ from PyQt6.QtGui import QIcon
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
+from matplotlib._pylab_helpers import Gcf
 
 from graf.base import save_graf as _save_graf
 
@@ -287,6 +288,18 @@ class GrafWindow(QMainWindow):
 
 		self._true_base_dpi = self.fig._original_dpi
 		self.setCentralWidget(self.canvas)
+
+		# If pyplot still has a figure manager (and hidden window) for this
+		# figure - e.g. it was created via plt.subplots() - detach it now
+		# that we've taken over the canvas, rather than leaving it dangling.
+		# That orphaned window only gets torn down much later, at
+		# interpreter/app shutdown, and closing it fires matplotlib's
+		# "close_event" - which by then can be trying to reject() a dialog
+		# (e.g. the toolbar's "Subplots" dialog) whose C++ object our own
+		# window has already destroyed, raising a RuntimeError. Detaching
+		# eagerly - before our own toolbar/dialogs even exist - means that
+		# close_event fires harmlessly, once, right here.
+		Gcf.destroy_fig(self.fig)
 
 	def _build_toolbar(self):
 
