@@ -341,7 +341,21 @@ class GrafWindow(QMainWindow):
 		self.fig._original_dpi = self._true_base_dpi * scale
 		ratio = self.canvas.device_pixel_ratio
 		self.fig._set_dpi(ratio * self.fig._original_dpi, forward=True)
+		self._redraw()
+
+	def _redraw(self):
+		''' Re-applies tight_layout (titles/labels/legends can change size with
+		the scale, axis bounds, grid/legend toggles, or the window itself being
+		resized, so spacing needs to be recomputed each time) and redraws. '''
+
+		self.fig.tight_layout()
 		self.canvas.draw()
+
+	def resizeEvent(self, event):
+
+		super().resizeEvent(event)
+		if hasattr(self, "fig"):
+			self._redraw()
 
 	def _on_scale_changed(self, scale: float):
 
@@ -365,7 +379,7 @@ class GrafWindow(QMainWindow):
 		self.grid_checked = checked
 		for ax in self.fig.get_axes():
 			ax.grid(checked)
-		self.canvas.draw()
+		self._redraw()
 
 	def _on_toggle_legend(self, checked):
 
@@ -379,7 +393,7 @@ class GrafWindow(QMainWindow):
 					legend.set_visible(True)
 			elif legend is not None:
 				legend.set_visible(False)
-		self.canvas.draw()
+		self._redraw()
 
 	def _on_save(self):
 
@@ -402,7 +416,7 @@ class GrafWindow(QMainWindow):
 
 		if self._axis_dialog is None:
 			self._axis_dialog = AxisBoundsDialog(
-				self, self.fig, on_apply=self.canvas.draw, on_reset=self._on_reset_axes,
+				self, self.fig, on_apply=self._redraw, on_reset=self._on_reset_axes,
 				grid_checked=self.grid_checked, legend_checked=self.legend_checked,
 				on_toggle_grid=self._on_toggle_grid, on_toggle_legend=self._on_toggle_legend,
 			)
@@ -416,7 +430,7 @@ class GrafWindow(QMainWindow):
 		for ax, (xlim, ylim) in self._original_limits.items():
 			ax.set_xlim(xlim)
 			ax.set_ylim(ylim)
-		self.canvas.draw()
+		self._redraw()
 
 		if self._axis_dialog is not None:
 			self._axis_dialog.refresh()
