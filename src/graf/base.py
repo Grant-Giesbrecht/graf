@@ -343,27 +343,82 @@ def _parse_marker(mpl_marker_code) -> str:
 		case _: return '.'
 
 def has_twinx(ax):
-	''' Checks if a matplotlib axis has a twin-axis (specifically a 2nd Y that shares a common X). '''
-	
-	# Get list of siblings
+	''' Checks if a matplotlib axis has a twin-axis (specifically a 2nd Y that shares a common
+	X AND occupies the same location in the figure, e.g. created via ax.twinx()). Merely sharing
+	x-limits isn't enough - separate stacked subplots created with sharex=True also share x-limits
+	with every other panel via get_shared_x_axes(), but sit at different positions and are not
+	twins, so that alone would misclassify an entire sharex-linked gridspec/subplots figure as
+	twin pairs (dropping all but 2 of its axes). '''
+
+	# Get list of siblings that share x-limits
 	sibling_list = ax.get_shared_x_axes().get_siblings(ax)
-	
+	own_bounds = ax.get_position().bounds
+
 	# Scan over all axes in figure
 	for fig_ax in ax.figure.axes:
-		
+
 		# Skip axis if is original axis
 		if fig_ax == ax:
 			continue
-		
-		# Scan over all siblings 
+
+		# Scan over all x-sharing siblings, only counting ones at the same
+		# on-figure location as a genuine twin.
 		for sib_ax in sibling_list:
-			
-			# Return true if found a match
-			if sib_ax == fig_ax:
+			if sib_ax != fig_ax:
+				continue
+			sib_bounds = sib_ax.get_position().bounds
+			if all(abs(a - b) < 1e-3 for a, b in zip(own_bounds, sib_bounds)):
 				return True
-	
+
 	# No twin was found
 	return False
+
+def _infer_grid_positions(axes, tol=0.01):
+	''' Infers a GridSpec-style (row, col) position + span for each axis by
+	coordinate-compressing its on-figure bounding box (ax.get_position(),
+	in figure-fraction units) against every other axis's. Edges within `tol`
+	of each other are treated as the same grid line. Used as a best-effort
+	fallback for axes that have no real subplotspec (e.g. built with
+	fig.add_axes() / inset_axes() rather than plt.subplots()/GridSpec), so a
+	figure with freely-positioned axes still saves as a grid-based GrAF
+	layout instead of being rejected outright.
+
+	Returns a dict mapping each axis to ([row_start, col_start], [row_span, col_span]). '''
+
+	if not axes:
+		return {}
+
+	bboxes = {ax: ax.get_position() for ax in axes}
+
+	def cluster(values):
+		values = sorted(values)
+		clusters = [[values[0]]]
+		for v in values[1:]:
+			if v - clusters[-1][-1] <= tol:
+				clusters[-1].append(v)
+			else:
+				clusters.append([v])
+		return [sum(c) / len(c) for c in clusters]
+
+	def nearest_index(edges, value):
+		return min(range(len(edges)), key=lambda i: abs(edges[i] - value))
+
+	x_edges = cluster([b.x0 for b in bboxes.values()] + [b.x1 for b in bboxes.values()])
+	y_edges = cluster([b.y0 for b in bboxes.values()] + [b.y1 for b in bboxes.values()])
+	num_rows = len(y_edges) - 1
+
+	positions = {}
+	for ax, b in bboxes.items():
+		col_start = nearest_index(x_edges, b.x0)
+		col_stop = max(nearest_index(x_edges, b.x1), col_start + 1)
+		y0_idx = nearest_index(y_edges, b.y0)
+		y1_idx = nearest_index(y_edges, b.y1)
+		# Grid rows are numbered top-to-bottom; figure y increases bottom-to-top.
+		row_start = num_rows - max(y1_idx, y0_idx + 1)
+		row_stop = num_rows - y0_idx
+		positions[ax] = ([row_start, col_start], [row_stop - row_start, col_stop - col_start])
+
+	return positions
 
 class Font(Packable):
 	
@@ -1294,11 +1349,11 @@ class Axis(Packable):
 	AXIS_IMAGE = "AXIS_IMAGE"
 	AXIS_SURFACE = "AXIS_SURFACE"
 	
-	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None, log:plf.LogPile=None): #:matplotlib.axes._axes.Axes=None):
+	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None, log:plf.LogPile=None, position_override=None): #:matplotlib.axes._axes.Axes=None):
 		super().__init__(log)
-		
+
 		self.gs = gs # Copy of GraphStyle in Graf class - do not add to manifest
-		
+
 		self.axis_type = Axis.AXIS_LINE2D
 		self.position = [0, 0] # Position, as row-column from top-left
 		self.span = [1, 1] # Row and column span of axes
@@ -1311,10 +1366,10 @@ class Axis(Packable):
 		self.traces = {}
 		self.surfaces = {}
 		self.title = ""
-		
+
 		# Initialize with axes if possible
 		if ax is not None:
-			self.mimic(ax, twin=twin_ax)
+			self.mimic(ax, twin=twin_ax, position_override=position_override)
 	
 	def set_manifest(self):
 		self.manifest.append("axis_type")
@@ -1330,7 +1385,7 @@ class Axis(Packable):
 		self.dict_manifest["surfaces"] = Surface()
 		self.manifest.append("title")
 	
-	def mimic(self, ax, twin=None):
+	def mimic(self, ax, twin=None, position_override=None):
 
 		# Only treat as surface/image when real raster/mesh collections are present.
 		# LineCollection objects (e.g. from ax.errorbar) live in ax.collections but
@@ -1344,12 +1399,12 @@ class Axis(Packable):
 			else:
 				self.axis_type = Axis.AXIS_IMAGE
 			self.log.debug(f"Mimicing Surface object (axis_type={self.axis_type})")
-			self._mimic_surface(ax)
+			self._mimic_surface(ax, position_override=position_override)
 		else:
 			self.log.debug(f"Mimicing Trace object")
-			self._mimic_line(ax, twin=twin)
-	
-	def _mimic_line(self, ax, twin=None):
+			self._mimic_line(ax, twin=twin, position_override=position_override)
+
+	def _mimic_line(self, ax, twin=None, position_override=None):
 		
 		# Identify main and twin axis
 		if twin is None:
@@ -1443,19 +1498,23 @@ class Axis(Packable):
 				tr_idx += 1
 		
 		self.title = str(main_ax.get_title())
-		
-		# Get subplot position
-		col_start = main_ax.get_subplotspec().colspan.start
-		col_stop = main_ax.get_subplotspec().colspan.stop
-		row_start = main_ax.get_subplotspec().rowspan.start
-		row_stop = main_ax.get_subplotspec().rowspan.stop
-		
-		# Copy to local variables
-		self.position = [row_start, col_start]
-		self.span = [row_stop-row_start, col_stop-col_start]
+
+		# Get subplot position: prefer an inferred grid position (used for axes
+		# with no real subplotspec, e.g. fig.add_axes()/inset_axes()) over the
+		# subplotspec itself.
+		if position_override is not None:
+			self.position, self.span = position_override
+		else:
+			col_start = main_ax.get_subplotspec().colspan.start
+			col_stop = main_ax.get_subplotspec().colspan.stop
+			row_start = main_ax.get_subplotspec().rowspan.start
+			row_stop = main_ax.get_subplotspec().rowspan.stop
+
+			self.position = [row_start, col_start]
+			self.span = [row_stop-row_start, col_stop-col_start]
 	
-	def _mimic_surface(self, ax):
-		
+	def _mimic_surface(self, ax, position_override=None):
+
 		# self.relative_size = []
 		self.x_axis = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_X, log=self.log)
 		self.y_axis_L = Scale(self.gs, ax=ax, scale_id=Scale.SCALE_ID_Y, log=self.log)
@@ -1489,16 +1548,20 @@ class Axis(Packable):
 			self.surfaces[f'Sf{sf_idx}'] = Surface(mpl_coll, log=self.log)
 			sf_idx += 1
 
-		# Get subplot position
-		col_start = ax.get_subplotspec().colspan.start
-		col_stop = ax.get_subplotspec().colspan.stop
-		row_start = ax.get_subplotspec().rowspan.start
-		row_stop = ax.get_subplotspec().rowspan.stop
-		
-		# Copy to local variables
-		self.position = [row_start, col_start]
-		self.span = [row_stop-row_start, col_stop-col_start]
-	
+		# Get subplot position: prefer an inferred grid position (used for axes
+		# with no real subplotspec, e.g. fig.add_axes()/inset_axes()) over the
+		# subplotspec itself.
+		if position_override is not None:
+			self.position, self.span = position_override
+		else:
+			col_start = ax.get_subplotspec().colspan.start
+			col_stop = ax.get_subplotspec().colspan.stop
+			row_start = ax.get_subplotspec().rowspan.start
+			row_stop = ax.get_subplotspec().rowspan.stop
+
+			self.position = [row_start, col_start]
+			self.span = [row_stop-row_start, col_stop-col_start]
+
 	def apply_to(self, ax, gstyle:GraphStyle, twin_ax=None, fig=None):
 
 		if self.axis_type == Axis.AXIS_LINE2D or self.axis_type == Axis.AXIS_LINE3D:
@@ -1691,27 +1754,47 @@ class Graf(Packable):
 				sole_axes.append(ax)
 		
 		#TODO: Iterate over twin vs sole axes differently
-		
-		# Mimic all sole-axes (skip axes without a subplotspec, e.g. colorbar axes)
+
+		# Axes built via fig.add_axes()/inset_axes() (rather than plt.subplots(),
+		# add_subplot(), or a GridSpec) have no subplotspec, so they can't be
+		# positioned using GrAF's native grid model. Rather than dropping them
+		# (which used to silently save a figure with zero axes - see git history),
+		# if ANY axis lacks a subplotspec, infer a best-effort grid for every axis
+		# from their on-figure bounding boxes so the layout - and the axes' data -
+		# still round-trips. Axes that already have a real subplotspec are left
+		# alone; inference only kicks in when it's actually needed.
+		primary_axes = list(sole_axes) + [pair[0] for pair in twin_axes if len(pair) == 2]
+		if any(ax.get_subplotspec() is None for ax in primary_axes):
+			self.log.warning(
+				f"One or more axes have no subplotspec (likely built with fig.add_axes() "
+				f"or inset_axes()); inferring a grid layout from their on-figure positions."
+			)
+			inferred_positions = _infer_grid_positions(primary_axes)
+		else:
+			inferred_positions = {}
+
+		# Mimic all sole-axes
 		self.axes = {}
 		ax_idx = 0
 		for ax in sole_axes:
-			if ax.get_subplotspec() is None:
-				self.log.warning(f"Skipping axis without subplotspec (e.g. colorbar).")
-				continue
-			self.axes[f'Ax{ax_idx}'] = Axis(self.style, ax, log=self.log)
+			self.axes[f'Ax{ax_idx}'] = Axis(self.style, ax, log=self.log,
+											 position_override=inferred_positions.get(ax))
 			ax_idx += 1
 
 		# Mimic all twin-axes
 		idx_offset = ax_idx
 		for idx, ax in enumerate(twin_axes):
 			if len(ax) != 2:
-				print(f"ERROR: Failed to properly identify twin axes. Skipping.")
+				self.log.warning(f"Failed to properly identify twin axes. Skipping.")
 				continue
-			if ax[0].get_subplotspec() is None:
-				self.log.warning(f"Skipping twin axis pair without subplotspec.")
-				continue
-			self.axes[f'Ax{idx+idx_offset}'] = Axis(self.style, ax[0], twin_ax=ax[1], log=self.log)
+			self.axes[f'Ax{idx+idx_offset}'] = Axis(self.style, ax[0], twin_ax=ax[1], log=self.log,
+													 position_override=inferred_positions.get(ax[0]))
+
+		# Defensive guard: this should be unreachable now that unsupported axes
+		# get an inferred position, but a figure with real axes must never
+		# silently save as an empty GrAF file (that's the bug this replaced).
+		if len(self.axes) == 0 and (len(sole_axes) + len(twin_axes)) > 0:
+			raise ValueError("Failed to place any of this figure's axes on a grid - cannot save as GrAF.")
 	
 	def get_axis(self, axis_pos:tuple=(0,0)):
 		'''
