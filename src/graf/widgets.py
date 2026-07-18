@@ -474,8 +474,26 @@ def _attach_cursor(fig:Figure):
 			sel.annotation.set_text(f"{label}\n{sel.annotation.get_text()}")
 
 
-def rich_show(fig:Figure, save_graf=None, title:str="Graf", default_filename:str="figure"):
-	''' Convenience wrapper: builds a GrafWindow around fig and immediately shows it. '''
+def rich_show(fig:Figure=None, save_graf=None, title:str="Graf", default_filename:str="figure"):
+	''' Convenience wrapper: builds a GrafWindow around fig and immediately shows it.
+
+	If fig is None, shows every currently open matplotlib figure at once,
+	mirroring plt.show(). '''
+
+	if fig is None:
+		figs = [manager.canvas.figure for manager in Gcf.get_all_fig_managers()]
+		if not figs:
+			return
+
+		windows = []
+		for f in figs:
+			_attach_cursor(f)
+			window = GrafWindow(f, save_graf=save_graf, title=title, default_filename=default_filename)
+			QMainWindow.show(window)
+			windows.append(window)
+
+		windows[0]._app.exec()
+		return
 
 	_attach_cursor(fig)
 	GrafWindow(fig, save_graf=save_graf, title=title, default_filename=default_filename).show()
