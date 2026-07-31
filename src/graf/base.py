@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from stardust.tome import dict_to_tome, tome_to_dict
 from stardust.serializer import Packable
 import pylogfile.base as plf
-from ganymede import dict_summary
+from stardust.io import dict_summary
 import matplotlib.font_manager as fm
 import os
 from matplotlib.gridspec import GridSpec
