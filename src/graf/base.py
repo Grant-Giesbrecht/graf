@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 from abc import ABC, abstractmethod
 # from stardust.io import hdf_to_dict, dict_to_hdf
-from stardust.sandbox import dict_to_tome, tome_to_dict
+from stardust.tome import dict_to_tome, tome_to_dict
 from stardust.serializer import Packable
 import pylogfile.base as plf
 from ganymede import dict_summary
