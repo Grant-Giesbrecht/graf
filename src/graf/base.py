@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 from abc import ABC, abstractmethod
 # from stardust.io import hdf_to_dict, dict_to_hdf
-from stardust.sandbox import dict_to_tome, tome_to_dict
+from stardust.tome import dict_to_tome, tome_to_dict
 from stardust.serializer import Packable
 import pylogfile.base as plf
 from ganymede import dict_summary
@@ -38,6 +38,12 @@ import datetime
 GRAF_VERSION = "0.0.0"
 PROVENANCE_SCHEMA = "1.0"   # version of the info.provenance / info.history layout
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
+
+# gid tag applied to the invisible marker-only companion artists that
+# widgets._attach_cursor() adds alongside each line (see that function's
+# docstring). mimic() looks for this tag so those helper artists don't get
+# saved as duplicate traces.
+CURSOR_MARKER_GID = "_graf_cursor_marker"
 MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "|", "_", "*", "None"]
 FONT_TYPES = ['regular', 'bold', 'italic']
 
@@ -1466,8 +1472,10 @@ class Axis(Packable):
 			tr_idx += 1
 
 		# Find and mimic all plain lines (2d and 3d), skipping errorbar-owned ones
+		# and skipping mplcursors' invisible marker-only companion artists
+		# (see CURSOR_MARKER_GID) so they aren't saved as duplicate traces.
 		for mpl_trace in main_ax.lines:
-			if mpl_trace in errbar_lines:
+			if mpl_trace in errbar_lines or mpl_trace.get_gid() == CURSOR_MARKER_GID:
 				continue
 			self.log.lowdebug(f"Mimicing trace: {mpl_trace}")
 			self.traces[f'Tr{tr_idx}'] = Trace(mpl_trace, log=self.log)
@@ -1492,7 +1500,7 @@ class Axis(Packable):
 				tr_idx += 1
 
 			for mpl_trace in twin_ax.lines:
-				if mpl_trace in twin_errbar_lines:
+				if mpl_trace in twin_errbar_lines or mpl_trace.get_gid() == CURSOR_MARKER_GID:
 					continue
 				self.traces[f'Tr{tr_idx}'] = Trace(mpl_trace, use_twin=True, log=self.log)
 				tr_idx += 1

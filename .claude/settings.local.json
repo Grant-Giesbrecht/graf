@@ -7,7 +7,16 @@
       "Bash(pip show *)",
       "Bash(pip3 show *)",
       "Bash(git ls-tree *)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(python -m py_compile src/graf/widgets.py)",
+      "Bash(python -)",
+      "Bash(python *)",
+      "Bash(git mv *)",
+      "Bash(mv src/grs.png src/graf/assets/grs.png)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "Bash(tasklist //FI \"IMAGENAME eq python.exe\")",
+      "Bash(taskkill //F //PID 5192)",
+      "Bash(taskkill //F //PID 10504)"
     ]
   }
 }

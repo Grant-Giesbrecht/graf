@@ -31,7 +31,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolb
 from matplotlib.figure import Figure
 from matplotlib._pylab_helpers import Gcf
 
-from graf.base import save_graf as _save_graf
+from graf.base import save_graf as _save_graf, CURSOR_MARKER_GID
 
 
 # Save-dialog filter string, in display order. "GrAF format" is listed
@@ -462,6 +462,7 @@ def _attach_cursor(fig:Figure):
 				*line.get_data(), linestyle="None", marker="o", markersize=4,
 				color=line.get_color(), alpha=0, label="_nolegend_",
 			)
+			marker_artist.set_gid(CURSOR_MARKER_GID)
 			pickable.append(marker_artist)
 			label_by_marker[marker_artist] = line.get_label()
 
