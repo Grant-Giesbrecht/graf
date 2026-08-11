@@ -48,7 +48,7 @@ except ImportError:
    should resolve to the real function and `_default_save_graf` becomes dead
    code, unless you want it kept as a safety net for standalone use.
 2. **Verify signature compatibility**: `GrafWindow` calls
-   `self.save_graf(self.fig, filename)` — two positional args, filename
+   `self.write_graf(self.fig, filename)` — two positional args, filename
    includes the extension the user picked in the save dialog. Confirm this
    still matches the real `save_graf`.
 3. `_default_save_graf`'s `.graf` handling is a placeholder (just pickles the
@@ -225,7 +225,7 @@ class GrafWindow:
 	def __init__(self, fig:Figure, save_graf=None, title:str="Graf", default_filename:str="figure"):
 
 		self.fig = fig
-		self.save_graf = save_graf if save_graf is not None else _save_graf
+		self.write_graf = save_graf if save_graf is not None else _save_graf
 		self.default_filename = default_filename
 		self._axis_dialog = None
 
@@ -306,7 +306,7 @@ class GrafWindow:
 			return
 
 		try:
-			self.save_graf(self.fig, filename)
+			self.write_graf(self.fig, filename)
 		except Exception as e:
 			messagebox.showerror("Save failed", str(e))
 

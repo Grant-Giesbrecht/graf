@@ -32,10 +32,10 @@ def main():
 		# Read file
 		if len_gt5 and filename[-5:].upper() == ".GRAF":
 			graf1 = Graf()
-			graf1.load_hdf(filename)
+			graf1.read_graf(filename)
 		elif len_gt5 and filename[-5:].upper() == ".JSON":
 			print(f"JSON")
-			# if not log.load_hdf(filename):
+			# if not log.read_graf(filename):
 			# 	print("\tFailed to read JSON file.")
 			pass
 		elif len_gt7 and filename[-7:].upper() == ".PKLFIG":

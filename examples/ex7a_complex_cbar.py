@@ -30,10 +30,10 @@ im2 = ax2.imshow(Z, interpolation='bilinear', cmap='plasma', origin='lower', ext
 
 
 # g1 = Graf(fig=fig1)
-# g1.save_hdf("ex7a.graf")
+# g1.write_graf("ex7a.graf")
 # 
 # g2 = Graf()
-# g2.load_hdf("ex7a.graf")
+# g2.read_graf("ex7a.graf")
 # fig2 = g2.to_fig()
 
 fig1.tight_layout()

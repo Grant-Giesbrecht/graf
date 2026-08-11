@@ -259,10 +259,10 @@ class TestCombinations:
         fig = plt.figure()
         path = str(tmp_path / 'empty.graf')
         g = Graf(fig=fig)
-        g.save_hdf(path)
+        g.write_graf(path)
         plt.close(fig)
         g2 = Graf()
-        g2.load_hdf(path)
+        g2.read_graf(path)
         assert len(g2.axes) == 0
 
     def test_to_fig_empty_figure(self, tmp_path):

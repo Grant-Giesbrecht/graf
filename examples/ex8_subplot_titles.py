@@ -22,10 +22,10 @@ ax1c.plot(t, data3)
 ax1c.set_title("sin-h")
 
 g1_out = Graf(fig=fig1)
-g1_out.save_hdf("ex8.graf")
+g1_out.write_graf("ex8.graf")
 
 g1_in = Graf()
-g1_in.load_hdf("ex8.graf")
+g1_in.read_graf("ex8.graf")
 fig1_copy = g1_in.to_fig()
 
 

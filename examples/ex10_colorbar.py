@@ -22,10 +22,10 @@ axes1[0].set_ylabel("Y")
 fig1.colorbar(qm_l, ax=axes1[0], label="Amplitude")
 
 g1 = Graf(fig=fig1)
-g1.save_hdf("ex10_pcolormesh_cbar.graf")
+g1.write_graf("ex10_pcolormesh_cbar.graf")
 
 g1b = Graf()
-g1b.load_hdf("ex10_pcolormesh_cbar.graf")
+g1b.read_graf("ex10_pcolormesh_cbar.graf")
 fig1b = g1b.to_fig()
 fig1b.get_axes()[0].set_title("Reconstructed")
 fig1b.suptitle("pcolormesh — vertical colorbar (reconstructed)")
@@ -43,10 +43,10 @@ ax2.set_ylabel("Y")
 fig2.colorbar(im, ax=ax2, orientation='horizontal', label="Value")
 
 g2 = Graf(fig=fig2)
-g2.save_hdf("ex10_imshow_cbar.graf")
+g2.write_graf("ex10_imshow_cbar.graf")
 
 g2b = Graf()
-g2b.load_hdf("ex10_imshow_cbar.graf")
+g2b.read_graf("ex10_imshow_cbar.graf")
 fig2b = g2b.to_fig()
 fig2b.get_axes()[0].set_title("Reconstructed")
 fig2b.suptitle("imshow — horizontal colorbar (reconstructed)")
@@ -68,10 +68,10 @@ ax3.set_title("3D surface — original")
 fig3.colorbar(surf3, ax=ax3, label="sinc(r)")
 
 g3 = Graf(fig=fig3)
-g3.save_hdf("ex10_surface3d_cbar.graf")
+g3.write_graf("ex10_surface3d_cbar.graf")
 
 g3b = Graf()
-g3b.load_hdf("ex10_surface3d_cbar.graf")
+g3b.read_graf("ex10_surface3d_cbar.graf")
 fig3b = g3b.to_fig("3D surface — reconstructed")
 fig3b.get_axes()[0].set_title("3D surface — reconstructed")
 

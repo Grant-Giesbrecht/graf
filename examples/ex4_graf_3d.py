@@ -18,13 +18,13 @@ ax.set_ylabel("Y-axis")
 ax.set_zlabel("Z-axis")
 
 graf1 = Graf(fig=fig1, log=log)
-graf1.save_hdf("ex4_line3d.graf")
+graf1.write_graf("ex4_line3d.graf")
 
 graf2 = Graf(log=log)
 # graf2.log.set_terminal_level("LOWDEBUG")
 # graf2.log.str_format.show_detail = True
 
-graf2.load_hdf("ex4_line3d.graf")
+graf2.read_graf("ex4_line3d.graf")
 fig2 = graf2.to_fig()
 
 plt.show()

@@ -18,11 +18,11 @@ def roundtrip(fig, tmp_path, name="test.graf"):
     """Save fig to a .graf file then reload and return the new Graf object."""
     path = str(tmp_path / name)
     g = Graf(fig=fig)
-    g.save_hdf(path)
+    g.write_graf(path)
     plt.close(fig)
 
     g2 = Graf()
-    g2.load_hdf(path)
+    g2.read_graf(path)
     return g2
 
 

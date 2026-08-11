@@ -32,9 +32,9 @@ dict_summary(graf1_dict)
 graf2.unpack(graf1_dict) # Init new GrAF from dict
 fig3 = graf2.to_fig() # Convert GrAF to fig
 
-graf2.save_hdf("ex1_test.GrAF")
+graf2.write_graf("ex1_test.GrAF")
 graf3 = Graf()
-graf3.load_hdf("ex1_test.GrAF")
+graf3.read_graf("ex1_test.GrAF")
 fig4 = graf3.to_fig()
 
 plt.show()

@@ -55,17 +55,17 @@ ax2a.plot([1,2,3], [4,6,5])
 # print(f"(No twin) hasattr(ax2a, 'get_shared_x_axes'): {has_twin(ax2a)}")
 
 g1 = Graf(fig=fig1)
-g1.save_hdf("ex5_twin.graf")
+g1.write_graf("ex5_twin.graf")
 
 g2 = Graf(fig=fig2)
-g2.save_hdf("ex5_notwin.graf")
+g2.write_graf("ex5_notwin.graf")
 
 g1x = Graf()
-g1x.load_hdf("ex5_twin.graf")
+g1x.read_graf("ex5_twin.graf")
 fig3 = g1x.to_fig()
 
 g2x = Graf()
-g2x.load_hdf("ex5_notwin.graf")
+g2x.read_graf("ex5_notwin.graf")
 fig4 = g2x.to_fig()
 
 

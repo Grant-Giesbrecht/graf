@@ -254,7 +254,7 @@ class GrafWindow(QMainWindow):
 		super().__init__()
 
 		self.fig = fig
-		self.save_graf = save_graf if save_graf is not None else _save_graf
+		self.write_graf = save_graf if save_graf is not None else _save_graf
 		self.default_filename = default_filename
 		self._axis_dialog = None
 
@@ -408,7 +408,7 @@ class GrafWindow(QMainWindow):
 			filename += ext
 
 		try:
-			self.save_graf(self.fig, filename)
+			self.write_graf(self.fig, filename)
 		except Exception as e:
 			QMessageBox.critical(self, "Save failed", str(e))
 

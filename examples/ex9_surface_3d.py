@@ -25,11 +25,11 @@ ax.set_title("3D Surface — original")
 
 # Save to GrAF
 graf1 = Graf(fig=fig1, log=log)
-graf1.save_hdf("ex9_surface_3d.graf")
+graf1.write_graf("ex9_surface_3d.graf")
 
 # Reload and reconstruct
 graf2 = Graf(log=log)
-graf2.load_hdf("ex9_surface_3d.graf")
+graf2.read_graf("ex9_surface_3d.graf")
 fig2 = graf2.to_fig(window_title="3D Surface — reconstructed")
 
 plt.show()
