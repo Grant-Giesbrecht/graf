@@ -24,7 +24,7 @@ the Edit Axes / Save GrAF buttons around as the numbers changed width).
 The application-level name and icon used by the menu bar, window titles,
 and the taskbar/dock are configurable module-wide:
 
-	gw.set_app_title("Plots")
+	gw.set_app_title("Plots")   # set before the first figure, ideally
 	gw.set_app_icon("/path/to/icon.png")
 	gw.set_show_coordinates(False)   # hide the x/y readout entirely
 '''
@@ -80,18 +80,140 @@ _SCALE_OPTIONS = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
 _DEFAULT_SCALE = 1.0
 
 
-def set_app_title(title:str):
-	''' Sets the name shown in the menu bar and used as the prefix of every
-	window title (e.g. set_app_title("Plots") gives "Plots: Figure 1").
-	Passing None restores the default, "GrAF Rich Show". Affects windows
-	opened after the call; already-open windows keep their titles. '''
+def _objc_messenger():
+	''' Returns a helper for sending Objective-C messages via ctypes, or None
+	if the runtime can't be loaded. Used only on macOS, and only to set names
+	the OS reads from the process itself (see _apply_macos_app_name); doing it
+	this way avoids taking a dependency on pyobjc. '''
 
-	global _APP_TITLE
-	_APP_TITLE = _DEFAULT_APP_TITLE if title is None else str(title)
+	import ctypes
+	import ctypes.util
+
+	lib = ctypes.util.find_library("objc")
+	if lib is None:
+		return None
+
+	objc = ctypes.cdll.LoadLibrary(lib)
+	objc.objc_getClass.restype = ctypes.c_void_p
+	objc.objc_getClass.argtypes = [ctypes.c_char_p]
+	objc.sel_registerName.restype = ctypes.c_void_p
+	objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+	# objc_msgSend must be called through a prototype matching each message's
+	# actual signature (its declared argtypes are per-call, not global), so we
+	# rebuild a function pointer from its address for every send.
+	send_address = ctypes.cast(objc.objc_msgSend, ctypes.c_void_p).value
+
+	def send(receiver, selector, *args, restype=ctypes.c_void_p, argtypes=()):
+		if not receiver:
+			return None
+		prototype = ctypes.CFUNCTYPE(restype, ctypes.c_void_p, ctypes.c_void_p, *argtypes)
+		return prototype(send_address)(receiver, objc.sel_registerName(selector.encode()), *args)
+
+	return objc, send
+
+
+def _apply_macos_app_name(name:str):
+	''' Makes macOS itself call the process `name`: the bold entry at the left
+	of the menu bar and the Dock's hover tooltip come from the running app's
+	CFBundleName / process name, not from anything Qt exposes. For a plain
+	(un-bundled) Python process both would otherwise read "Python".
+
+	The menu bar reads CFBundleName once, while the app menu is built - which
+	Qt does when the QApplication is constructed - so this has to run before
+	then to take effect; set_app_title() called ahead of the first rich_show()
+	does exactly that. Everything here is best-effort: a failure just leaves
+	the default OS-supplied name in place. '''
+
+	try:
+		import ctypes
+
+		messenger = _objc_messenger()
+		if messenger is None:
+			return
+		objc, send = messenger
+
+		def nsstring(text):
+			return send(objc.objc_getClass(b"NSString"), "stringWithUTF8String:",
+					text.encode("utf-8"), argtypes=(ctypes.c_char_p,))
+
+		ns_name = nsstring(name)
+
+		# CFBundleName -> the menu bar's application name. mainBundle's info
+		# dictionary is mutable in practice for an un-bundled process, but
+		# check before mutating rather than risk an ObjC exception.
+		bundle = send(objc.objc_getClass(b"NSBundle"), "mainBundle")
+		info = send(bundle, "infoDictionary")
+		responds = send(info, "respondsToSelector:", objc.sel_registerName(b"setObject:forKey:"),
+				restype=ctypes.c_bool, argtypes=(ctypes.c_void_p,))
+		if responds:
+			send(info, "setObject:forKey:", ns_name, nsstring("CFBundleName"),
+					argtypes=(ctypes.c_void_p, ctypes.c_void_p))
+
+		# Process name -> the Dock tooltip (and Activity Monitor / Force Quit).
+		process_info = send(objc.objc_getClass(b"NSProcessInfo"), "processInfo")
+		send(process_info, "setProcessName:", ns_name, argtypes=(ctypes.c_void_p,))
+
+		# If the menu bar already exists (set_app_title called after a window
+		# was opened), retitle the app menu in place so at least the running
+		# session picks the new name up.
+		if QApplication.instance() is not None:
+			app = send(objc.objc_getClass(b"NSApplication"), "sharedApplication")
+			main_menu = send(app, "mainMenu")
+			item = send(main_menu, "itemAtIndex:", 0, argtypes=(ctypes.c_long,))
+			send(item, "setTitle:", ns_name, argtypes=(ctypes.c_void_p,))
+			send(send(item, "submenu"), "setTitle:", ns_name, argtypes=(ctypes.c_void_p,))
+
+	except Exception:
+		pass
+
+
+def _apply_windows_app_id(name:str):
+	''' Gives the process an explicit AppUserModelID so the Windows taskbar
+	treats our windows as one app of our own (with our icon and name) rather
+	than grouping them under the Python interpreter. Best-effort. '''
+
+	try:
+		import ctypes
+
+		app_id = "GrAF.RichShow." + "".join(c for c in name if c.isalnum() or c in "._-")
+		ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+	except Exception:
+		pass
+
+
+def _apply_app_identity():
+	''' Pushes the current app title down to the places the OS - rather than
+	Qt - decides what to call us: the macOS menu bar and Dock, the Windows
+	taskbar, and the Linux taskbar/dock (which matches windows to apps by
+	WM_CLASS / desktop file name, both of which Qt derives from these). '''
 
 	app = QApplication.instance()
 	if app is not None:
 		app.setApplicationName(_APP_TITLE)
+
+	QApplication.setDesktopFileName(_APP_TITLE)
+
+	if sys.platform == "darwin":
+		_apply_macos_app_name(_APP_TITLE)
+	elif sys.platform.startswith("win"):
+		_apply_windows_app_id(_APP_TITLE)
+
+
+def set_app_title(title:str):
+	''' Sets the application's name: the bold entry in the macOS menu bar, the
+	name shown by the Dock / Windows / Linux taskbar, and the prefix of every
+	window title (e.g. set_app_title("Plots") gives "Plots: Figure 1").
+	Passing None restores the default, "GrAF Rich Show".
+
+	Call this before the first rich_show() of the session. Window titles pick
+	up a later change too (for windows opened afterwards), but the macOS menu
+	bar reads the name once, when the first window's menu bar is created. '''
+
+	global _APP_TITLE
+	_APP_TITLE = _DEFAULT_APP_TITLE if title is None else str(title)
+
+	_apply_app_identity()
 
 
 def get_app_title() -> str:
@@ -159,7 +281,12 @@ def _ensure_qapp() -> QApplication:
 
 	app = QApplication.instance()
 	if app is None:
+		# Name the process before the QApplication exists: Qt builds the macOS
+		# menu bar (whose app entry comes from CFBundleName) during
+		# construction, so afterwards would be too late.
+		_apply_app_identity()
 		app = QApplication(sys.argv)
+
 	app.setWindowIcon(_load_icon())
 	app.setApplicationName(_APP_TITLE)
 	return app

@@ -16,7 +16,12 @@
       "Bash(echo \"EXIT CODE: $?\")",
       "Bash(tasklist //FI \"IMAGENAME eq python.exe\")",
       "Bash(taskkill //F //PID 5192)",
-      "Bash(taskkill //F //PID 10504)"
+      "Bash(taskkill //F //PID 10504)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(pkill -f scratchpad/t5.py)",
+      "Bash(pkill -f scratchpad/t6.py)",
+      "Bash(wait)",
+      "Bash(pkill -f scratchpad/t7.py)"
     ]
   }
 }
