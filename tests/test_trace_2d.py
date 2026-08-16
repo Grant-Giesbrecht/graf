@@ -109,6 +109,15 @@ class TestMarker:
         g = roundtrip(make_fig(x, y, marker=mpl_marker), tmp_path)
         assert g.axes['Ax0'].traces['Tr0'].marker_type == expected
 
+    @pytest.mark.parametrize("mpl_marker", ['o', '+', '^', 'v', 's', '.', 'x', '*', '|', '_'])
+    def test_marker_rebuilt_into_figure(self, xy, tmp_path, mpl_marker):
+        # Storing the marker isn't enough: it has to survive to_fig() too.
+        # GrAF writes a square as '[]', which matplotlib rejects, so this
+        # caught a rebuild that raised ValueError (leaving a blank figure).
+        x, y = xy
+        _, fig = roundtrip_fig(make_fig(x, y, marker=mpl_marker), tmp_path)
+        assert fig.get_axes()[0].get_lines()[0].get_marker() == mpl_marker
+
     def test_marker_size_preserved(self, xy, tmp_path):
         x, y = xy
         g = roundtrip(make_fig(x, y, marker='o', markersize=9), tmp_path)

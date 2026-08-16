@@ -21,7 +21,10 @@
       "Bash(pkill -f scratchpad/t5.py)",
       "Bash(pkill -f scratchpad/t6.py)",
       "Bash(wait)",
-      "Bash(pkill -f scratchpad/t7.py)"
+      "Bash(pkill -f scratchpad/t7.py)",
+      "Bash(git -C /Users/grantgiesbrecht/Documents/GitHub/graf stash list)",
+      "Bash(git -C /Users/grantgiesbrecht/Documents/GitHub/graf stash push -q -- src/graf/base.py)",
+      "Bash(git -C /Users/grantgiesbrecht/Documents/GitHub/graf stash pop -q)"
     ]
   }
 }

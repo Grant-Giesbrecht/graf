@@ -348,6 +348,17 @@ def _parse_marker(mpl_marker_code) -> str:
 		case 'x': return 'x'
 		case _: return '.'
 
+def _unparse_marker(graf_marker_code) -> str:
+	''' Converts a GrAF marker type string back to a matplotlib marker code.
+
+	Only the square differs between the two vocabularies: GrAF stores it as
+	'[]' (see _parse_marker), which matplotlib rejects outright, so every path
+	that hands a stored marker back to matplotlib has to come through here. '''
+
+	if graf_marker_code == '[]':
+		return 's'
+	return graf_marker_code
+
 def has_twinx(ax):
 	''' Checks if a matplotlib axis has a twin-axis (specifically a 2nd Y that shares a common
 	X AND occupies the same location in the figure, e.g. created via ax.twinx()). Merely sharing
@@ -1093,7 +1104,7 @@ class Trace(Packable):
 
 		#TODO: Error check line type, marker type, and sizes
 
-		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
+		ax.add_line(matplotlib.lines.Line2D(self.x_data, self.y_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=_unparse_marker(self.marker_type), markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
 
 	def apply_to_errorbar(self, ax):
 		''' Reconstructs an errorbar plot from stored data and styling. '''
@@ -1108,8 +1119,7 @@ class Trace(Packable):
 		yerr = np.vstack([y_err_neg, y_err_pos]) if np.any(y_err_neg > 0) or np.any(y_err_pos > 0) else None
 		xerr = np.vstack([x_err_neg, x_err_pos]) if np.any(x_err_neg > 0) or np.any(x_err_pos > 0) else None
 
-		# Convert GrAF marker '[]' back to matplotlib 's'
-		mpl_marker = 's' if self.marker_type == '[]' else self.marker_type
+		mpl_marker = _unparse_marker(self.marker_type)
 
 		ax.errorbar(
 			x, y,
@@ -1133,7 +1143,7 @@ class Trace(Packable):
 		
 		#TODO: Error check line type, marker type, and sizes
 		
-		ax.add_line(mpl3d.art3d.Line3D(self.x_data, self.y_data, self.z_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=self.marker_type, markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
+		ax.add_line(mpl3d.art3d.Line3D(self.x_data, self.y_data, self.z_data, linewidth=self.line_width, linestyle=self.line_type, color=self.line_color, marker=_unparse_marker(self.marker_type), markersize=self.marker_size, markerfacecolor=self.marker_color, label=self.display_name, alpha=self.alpha))
 	
 	def set_manifest(self):
 		self.manifest.append("trace_type")
