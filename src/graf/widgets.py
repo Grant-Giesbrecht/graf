@@ -14,6 +14,19 @@ top of that toolbar we add:
   a field loses focus), plus Grid / Legend checkboxes, a Reset Axes
   button (restores every Axes to the limits it had when the window was
   first built), and a Close button.
+
+Every window also gets a menu bar (File / View / Window) carrying the
+platform-standard shortcuts - Cmd-W / Ctrl-W closes the focused window,
+Cmd-Q / Ctrl-Q quits every window - and the cursor's x/y readout lives in
+the window's status bar rather than in the toolbar (where it used to push
+the Edit Axes / Save GrAF buttons around as the numbers changed width).
+
+The application-level name and icon used by the menu bar, window titles,
+and the taskbar/dock are configurable module-wide:
+
+	gw.set_app_title("Plots")
+	gw.set_app_icon("/path/to/icon.png")
+	gw.set_show_coordinates(False)   # hide the x/y readout entirely
 '''
 
 import os
@@ -25,7 +38,7 @@ from PyQt6.QtWidgets import (
 	QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog, QMessageBox, QComboBox,
 )
 from PyQt6.QtCore import QSettings
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QAction, QActionGroup, QKeySequence
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
@@ -46,7 +59,16 @@ _EXT_BY_FILTER = {
 	"JPEG image (*.jpg)": ".jpg",
 }
 
-_ICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "grs.png")
+_DEFAULT_ICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "grs.png")
+_ICON_PATH = _DEFAULT_ICON_PATH
+
+# Application-wide presentation, adjustable via set_app_title/set_app_icon.
+# _APP_TITLE names the app in the menu bar and prefixes every window title
+# ("GrAF Rich Show: Figure 1"); _APP_ICON is the window/taskbar/dock icon.
+_DEFAULT_APP_TITLE = "GrAF Rich Show"
+_APP_TITLE = _DEFAULT_APP_TITLE
+_APP_ICON = _DEFAULT_ICON_PATH
+_SHOW_COORDINATES = True
 
 # Persisted (QSettings) UI scale, applied on top of the figure's own dpi.
 # Lets a user compensate for e.g. an over/under-sized default on their display
@@ -58,10 +80,59 @@ _SCALE_OPTIONS = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
 _DEFAULT_SCALE = 1.0
 
 
+def set_app_title(title:str):
+	''' Sets the name shown in the menu bar and used as the prefix of every
+	window title (e.g. set_app_title("Plots") gives "Plots: Figure 1").
+	Passing None restores the default, "GrAF Rich Show". Affects windows
+	opened after the call; already-open windows keep their titles. '''
+
+	global _APP_TITLE
+	_APP_TITLE = _DEFAULT_APP_TITLE if title is None else str(title)
+
+	app = QApplication.instance()
+	if app is not None:
+		app.setApplicationName(_APP_TITLE)
+
+
+def get_app_title() -> str:
+	''' Returns the current application title (see set_app_title). '''
+
+	return _APP_TITLE
+
+
+def set_app_icon(icon):
+	''' Sets the window/taskbar/dock icon, given either a path to an image
+	file or a QIcon. Passing None restores GrAF's built-in icon. Applies to
+	the running application immediately, and to windows opened afterwards. '''
+
+	global _APP_ICON
+	_APP_ICON = _DEFAULT_ICON_PATH if icon is None else icon
+
+	app = QApplication.instance()
+	if app is not None:
+		app.setWindowIcon(_load_icon())
+
+
+def get_app_icon():
+	''' Returns the currently configured icon (a path or a QIcon). '''
+
+	return _APP_ICON
+
+
+def set_show_coordinates(show:bool):
+	''' Controls whether the cursor's x/y readout is shown in the status bar
+	at the bottom of each window. Applies to windows opened afterwards. '''
+
+	global _SHOW_COORDINATES
+	_SHOW_COORDINATES = bool(show)
+
+
 def _load_icon() -> QIcon:
 	''' Loads the window/taskbar/dock icon shared by every window we open. '''
 
-	return QIcon(_ICON_PATH)
+	if isinstance(_APP_ICON, QIcon):
+		return _APP_ICON
+	return QIcon(str(_APP_ICON))
 
 
 def _load_saved_scale() -> float:
@@ -90,6 +161,7 @@ def _ensure_qapp() -> QApplication:
 	if app is None:
 		app = QApplication(sys.argv)
 	app.setWindowIcon(_load_icon())
+	app.setApplicationName(_APP_TITLE)
 	return app
 
 
@@ -233,6 +305,30 @@ class AxisBoundsDialog(QDialog):
 				entry.setText(f"{value:g}")
 
 
+class _NavigationToolbar(NavigationToolbar2QT):
+	''' NavigationToolbar2QT with its built-in x/y readout removed.
+
+	The stock toolbar puts that readout in an expanding QLabel wedged into
+	the toolbar itself, so every mouse move over the canvas re-widths the
+	label and shoves the buttons we append after it ("Edit Axes", "Save
+	GrAF", the scale selector) sideways. We build the toolbar with
+	coordinates=False and forward the message to a callback instead, so the
+	host window can park it in a status bar (or drop it entirely). '''
+
+	# Class-level default: NavigationToolbar2.__init__ can emit messages
+	# before __init__ gets a chance to assign the instance attribute.
+	_message_target = None
+
+	def __init__(self, canvas, parent=None, message_target=None):
+		super().__init__(canvas, parent, coordinates=False)
+		self._message_target = message_target
+
+	def set_message(self, s):
+
+		if self._message_target is not None:
+			self._message_target(s)
+
+
 class GrafWindow(QMainWindow):
 	''' Embeds a matplotlib Figure in a Qt window with matplotlib's own
 	Qt toolbar (NavigationToolbar2QT), plus buttons to save the figure and
@@ -244,11 +340,14 @@ class GrafWindow(QMainWindow):
 		save_graf (callable): Function called as save_graf(fig, filename)
 			when the "Save Graf" button is pressed. Defaults to the
 			GrAF package's save_graf.
-		title (str): Window title.
+		title (str): Window title. Defaults to "<app title>: Figure N",
+			where the app title comes from set_app_title().
 		default_filename (str): Filename suggested in the save dialog.
+		figure_number (int): Figure number used in the default title.
 	'''
 
-	def __init__(self, fig:Figure, save_graf=None, title:str="Graf", default_filename:str="figure"):
+	def __init__(self, fig:Figure, save_graf=None, title:str=None, default_filename:str="figure",
+			figure_number:int=None):
 
 		self._app = _ensure_qapp()
 		super().__init__()
@@ -258,14 +357,20 @@ class GrafWindow(QMainWindow):
 		self.default_filename = default_filename
 		self._axis_dialog = None
 
+		if title is None:
+			number = figure_number if figure_number is not None else getattr(fig, "number", None)
+			title = f"{_APP_TITLE}: Figure {number}" if number is not None else _APP_TITLE
 		self.setWindowTitle(title)
 		self.setWindowIcon(_load_icon())
 
 		self._build_canvas()
 		self._original_limits = {ax: (ax.get_xlim(), ax.get_ylim()) for ax in fig.get_axes()}
+		self.grid_checked = self._grid_is_on()
+		self.legend_checked = self._legend_is_on()
 		self.scale = _load_saved_scale()
 		self._apply_scale(self.scale)
 		self._build_toolbar()
+		self._build_menubar()
 
 	def _build_canvas(self):
 
@@ -303,8 +408,15 @@ class GrafWindow(QMainWindow):
 
 	def _build_toolbar(self):
 
-		# Matplotlib's own pan/zoom/subplots/customize/save-as-image toolbar
-		nav = NavigationToolbar2QT(self.canvas, self)
+		# Matplotlib's own pan/zoom/subplots/customize/save-as-image toolbar.
+		# Its x/y readout is routed to the status bar (see _NavigationToolbar)
+		# so it can't jostle the buttons we append below.
+		self._coord_label = QLabel("")
+		if _SHOW_COORDINATES:
+			self.statusBar().addPermanentWidget(self._coord_label)
+
+		nav = _NavigationToolbar(self.canvas, self, message_target=self._set_message)
+		self.nav = nav
 		self.addToolBar(nav)
 
 		nav.addSeparator()
@@ -326,9 +438,101 @@ class GrafWindow(QMainWindow):
 		scale_combo.setCurrentIndex(current_index if current_index >= 0 else scale_combo.findData(_DEFAULT_SCALE))
 		scale_combo.currentIndexChanged.connect(lambda i: self._on_scale_changed(scale_combo.itemData(i)))
 		nav.addWidget(scale_combo)
+		self._scale_combo = scale_combo
 
-		self.grid_checked = self._grid_is_on()
-		self.legend_checked = self._legend_is_on()
+	def _set_message(self, text:str):
+		''' Receives the toolbar's status text (the cursor's x/y readout, plus
+		matplotlib's own pan/zoom hints) and shows it in the status bar. '''
+
+		if _SHOW_COORDINATES:
+			self._coord_label.setText(text)
+
+	def _build_menubar(self):
+		''' Builds the window's menu bar. Every window gets its own (on macOS
+		Qt merges whichever belongs to the focused window into the system menu
+		bar), which is also what gives us the platform-standard Close/Quit
+		shortcuts: Cmd-W/Cmd-Q on macOS, Ctrl-W/Ctrl-Q on Windows and Linux. '''
+
+		menubar = self.menuBar()
+
+		file_menu = menubar.addMenu("&File")
+
+		save_graf_action = QAction("Save GrAF...", self)
+		save_graf_action.setShortcut(QKeySequence.StandardKey.Save)
+		save_graf_action.triggered.connect(self._on_save)
+		file_menu.addAction(save_graf_action)
+
+		save_image_action = QAction("Save Image...", self)
+		save_image_action.setShortcut(QKeySequence.StandardKey.SaveAs)
+		save_image_action.triggered.connect(lambda: self.nav.save_figure())
+		file_menu.addAction(save_image_action)
+
+		file_menu.addSeparator()
+
+		close_action = QAction("Close Window", self)
+		close_action.setShortcut(QKeySequence.StandardKey.Close)
+		close_action.triggered.connect(self.close)
+		file_menu.addAction(close_action)
+
+		quit_action = QAction("Quit", self)
+		quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+		quit_action.setMenuRole(QAction.MenuRole.QuitRole)
+		quit_action.triggered.connect(self._on_quit)
+		file_menu.addAction(quit_action)
+
+		view_menu = menubar.addMenu("&View")
+
+		edit_axes_action = QAction("Edit Axes...", self)
+		edit_axes_action.triggered.connect(self._on_edit_axes)
+		view_menu.addAction(edit_axes_action)
+
+		reset_action = QAction("Reset Axes", self)
+		reset_action.triggered.connect(self._on_reset_axes)
+		view_menu.addAction(reset_action)
+
+		view_menu.addSeparator()
+
+		self.grid_action = QAction("Grid", self, checkable=True)
+		self.grid_action.setChecked(self.grid_checked)
+		self.grid_action.toggled.connect(self._on_toggle_grid)
+		view_menu.addAction(self.grid_action)
+
+		self.legend_action = QAction("Legend", self, checkable=True)
+		self.legend_action.setChecked(self.legend_checked)
+		self.legend_action.toggled.connect(self._on_toggle_legend)
+		view_menu.addAction(self.legend_action)
+
+		view_menu.addSeparator()
+
+		scale_menu = view_menu.addMenu("UI Scale")
+		self._scale_group = QActionGroup(self)
+		self._scale_group.setExclusive(True)
+		self._scale_actions = {}
+		for option in _SCALE_OPTIONS:
+			action = QAction(f"{option:.0%}", self, checkable=True)
+			action.setChecked(option == self.scale)
+			action.triggered.connect(lambda _checked, s=option: self._on_scale_changed(s))
+			self._scale_group.addAction(action)
+			scale_menu.addAction(action)
+			self._scale_actions[option] = action
+
+		window_menu = menubar.addMenu("&Window")
+
+		minimize_action = QAction("Minimize", self)
+		minimize_action.setShortcut("Ctrl+M")
+		minimize_action.triggered.connect(self.showMinimized)
+		window_menu.addAction(minimize_action)
+
+		close_all_action = QAction("Close All Windows", self)
+		close_all_action.triggered.connect(self._on_quit)
+		window_menu.addAction(close_all_action)
+
+	def _on_quit(self):
+		''' Closes every open window, which ends the Qt event loop and returns
+		control to the caller of rich_show(). '''
+
+		self._app.closeAllWindows()
+		self._app.quit()
 
 	def _apply_scale(self, scale: float):
 		''' Applies a UI scale on top of the figure's true (unscaled) dpi,
@@ -359,8 +563,28 @@ class GrafWindow(QMainWindow):
 
 	def _on_scale_changed(self, scale: float):
 
+		if scale is None or scale == self.scale:
+			return
+
 		self._apply_scale(scale)
 		_save_scale(scale)
+		self._sync_scale_widgets(scale)
+
+	def _sync_scale_widgets(self, scale: float):
+		''' Keeps the toolbar's scale selector and the View > UI Scale menu in
+		agreement, whichever of the two the change came from. '''
+
+		combo = getattr(self, "_scale_combo", None)
+		if combo is not None:
+			index = combo.findData(scale)
+			if index >= 0 and index != combo.currentIndex():
+				combo.blockSignals(True)
+				combo.setCurrentIndex(index)
+				combo.blockSignals(False)
+
+		action = getattr(self, "_scale_actions", {}).get(scale)
+		if action is not None and not action.isChecked():
+			action.setChecked(True)
 
 	def _grid_is_on(self) -> bool:
 
@@ -374,9 +598,25 @@ class GrafWindow(QMainWindow):
 
 		return any(ax.get_legend() is not None and ax.get_legend().get_visible() for ax in self.fig.get_axes())
 
+	def _sync_toggle(self, action, checkbox, checked):
+		''' Mirrors a grid/legend state change into the widget it didn't come
+		from (menu action <-> Edit Axes dialog checkbox), without re-firing
+		the handler that's already running. '''
+
+		for widget in (action, checkbox):
+			if widget is not None and widget.isChecked() != checked:
+				widget.blockSignals(True)
+				widget.setChecked(checked)
+				widget.blockSignals(False)
+
 	def _on_toggle_grid(self, checked):
 
 		self.grid_checked = checked
+		self._sync_toggle(
+			getattr(self, "grid_action", None),
+			self._axis_dialog.grid_checkbox if self._axis_dialog is not None else None,
+			checked,
+		)
 		for ax in self.fig.get_axes():
 			ax.grid(checked)
 		self._redraw()
@@ -384,6 +624,11 @@ class GrafWindow(QMainWindow):
 	def _on_toggle_legend(self, checked):
 
 		self.legend_checked = checked
+		self._sync_toggle(
+			getattr(self, "legend_action", None),
+			self._axis_dialog.legend_checkbox if self._axis_dialog is not None else None,
+			checked,
+		)
 		for ax in self.fig.get_axes():
 			legend = ax.get_legend()
 			if checked:
@@ -475,21 +720,27 @@ def _attach_cursor(fig:Figure):
 			sel.annotation.set_text(f"{label}\n{sel.annotation.get_text()}")
 
 
-def rich_show(fig:Figure=None, save_graf=None, title:str="Graf", default_filename:str="figure"):
+def rich_show(fig:Figure=None, save_graf=None, title:str=None, default_filename:str="figure"):
 	''' Convenience wrapper: builds a GrafWindow around fig and immediately shows it.
 
 	If fig is None, shows every currently open matplotlib figure at once,
-	mirroring plt.show(). '''
+	mirroring plt.show(). Each window is titled "<app title>: Figure N"
+	(see set_app_title) unless an explicit title is given. '''
 
 	if fig is None:
-		figs = [manager.canvas.figure for manager in Gcf.get_all_fig_managers()]
-		if not figs:
+		# Read the figure numbers before building any window: GrafWindow
+		# detaches each figure from pyplot, which clears its manager.
+		numbered = [(manager.num, manager.canvas.figure) for manager in Gcf.get_all_fig_managers()]
+		if not numbered:
 			return
 
 		windows = []
-		for f in figs:
+		for number, f in numbered:
 			_attach_cursor(f)
-			window = GrafWindow(f, save_graf=save_graf, title=title, default_filename=default_filename)
+			window = GrafWindow(
+				f, save_graf=save_graf, title=title, default_filename=default_filename,
+				figure_number=number,
+			)
 			QMainWindow.show(window)
 			windows.append(window)
 
@@ -497,4 +748,7 @@ def rich_show(fig:Figure=None, save_graf=None, title:str="Graf", default_filenam
 		return
 
 	_attach_cursor(fig)
-	GrafWindow(fig, save_graf=save_graf, title=title, default_filename=default_filename).show()
+	GrafWindow(
+		fig, save_graf=save_graf, title=title, default_filename=default_filename,
+		figure_number=getattr(fig, "number", None),
+	).show()
