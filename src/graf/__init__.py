@@ -39,7 +39,18 @@ from graf.base import (
 	MetaInfo,
 	save_graf,
 	load_graf,
+)
+
+from graf.fonts import (
+	GENERIC_ROLES,
+	SERIF,
+	SANS_SERIF,
+	MONOSPACE,
+	set_font_default,
+	get_font_defaults,
+	add_font_path,
 	available_font_families,
+	user_config_path,
 )
 
 __all__ = [
@@ -57,5 +68,13 @@ __all__ = [
 	"MetaInfo",
 	"save_graf",
 	"load_graf",
+	"GENERIC_ROLES",
+	"SERIF",
+	"SANS_SERIF",
+	"MONOSPACE",
+	"set_font_default",
+	"get_font_defaults",
+	"add_font_path",
 	"available_font_families",
+	"user_config_path",
 ]

@@ -35,27 +35,54 @@ Before adding a family, confirm all of the following:
    to this directory, prefixed with the family's own copyright line, and add a
    row to the table above.
 3. **`portable_fonts.json` records the metadata.** Every family must carry
-   `license`, `copyright`, `source_url`, and `license_file`. `test_fonts.py`
-   asserts these are present and that the referenced licence file actually
-   exists in the built wheel.
-4. **The reserved font name, if any, is respected.** OFL families may declare a
+   `family`, `role`, `faces`, `license`, `copyright`, `source_url`, and
+   `license_file`. `test_fonts.py` asserts these are present and that the
+   referenced licence file actually exists in the built wheel.
+4. **Aliases must not include a generic role.** `serif`, `sans-serif` and
+   `monospace` are roles, bound to a family by `role_defaults` and overridable
+   by the user. A family claiming one as an alias would make "any serif"
+   inexpressible. This is enforced in `load_manifest` and tested.
+5. **The reserved font name, if any, is respected.** OFL families may declare a
    Reserved Font Name; if GrAF ever modifies or subsets such a font, the result
    must be renamed. GrAF currently ships fonts unmodified, so this does not
    apply.
-5. **Trademarks are noted but not assumed.** "SUSE", for example, is a SUSE
+6. **Trademarks are noted but not assumed.** "SUSE", for example, is a SUSE
    trademark; the OFL licenses the font files, not the mark.
-6. **The file pattern is covered in `pyproject.toml`.** `[tool.setuptools.package-data]`
+7. **The file pattern is covered in `pyproject.toml`.** `[tool.setuptools.package-data]`
    lists the extensions that ship; a new format (e.g. `.woff2`) needs a new
    entry or it will be silently dropped from the wheel.
 
 Note that OFL 1.1 forbids selling the fonts *by themselves*, which does not
 restrict GrAF: they are bundled as part of a larger work and GrAF is MIT.
 
-## Fallback
+## How a request is resolved
 
-When a `.graf` file names a family this installation does not bundle, GrAF falls
-back to `FALLBACK_FONT` (currently `sanserif`) and emits a warning. This is
-deliberate: GrAF promises the data and the scientific message survive, and
-explicitly does not promise identical typography across machines. A missing
-typeface degrades the look; it must never block reconstruction. The warning
-exists so the drift is visible rather than silent.
+A `.graf` stores an ordered *font stack*, most specific first, ending in a
+generic role — `["MFB Oldstyle", "Georgia", "serif"]`. For each candidate GrAF
+looks in:
+
+1. fonts bundled here,
+2. directories in the user's `font_paths`,
+3. fonts installed on the system.
+
+First hit wins. If nothing matches, the trailing role decides, so a serif
+request degrades to another serif rather than jumping font class. GrAF warns
+once, naming what was asked for and what was used.
+
+This is deliberate: GrAF promises the data and the scientific message survive,
+and explicitly does not promise identical typography across machines. A missing
+typeface must degrade the look, never block reconstruction — and the file
+records `resolved_family` so a reader can always tell reproduction from
+substitution.
+
+## Adding fonts without bundling them
+
+Bundled fonts cost every user download size forever, so the bar is high. Users
+who want their own typefaces should not need a GrAF release:
+
+```python
+graf.add_font_path("~/Library/Fonts")
+graf.set_font_default("serif", "EB Garamond")
+```
+
+Both persist to the per-user config (`graf.user_config_path()`).

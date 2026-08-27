@@ -19,7 +19,7 @@ classifiers = [
 dependencies = [
 	'matplotlib >= 3.9.0',
 	'numpy >= 1.24.0',
-	'stardust-tools >= 0.1.0',
+	'stardust-tools >= 0.2.0',
 	'pylogfile >= 0.5.0',
 	'colorama >= 0.4.6',
 	'PyQt6 >= 6.4.0',
@@ -39,6 +39,7 @@ Issues = "https://github.com/Grant-Giesbrecht/graf/issues"
 
 [project.scripts]
 graf-viewer = "graf.scripts.grafviewer:main"
+graf-upgrade = "graf.scripts.grafupgrade:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

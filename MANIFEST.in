@@ -8,6 +8,9 @@ recursive-include src/graf/assets *.json *.png
 recursive-include src/graf/assets/fonts *.ttf *.otf
 recursive-include src/graf/assets/fonts/LICENSES *
 
+# The legacy-format regression fixture must travel with the sdist.
+recursive-include tests/data *
+
 global-exclude .DS_Store
 global-exclude *.py[cod]
 global-exclude __pycache__

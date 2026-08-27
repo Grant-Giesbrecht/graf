@@ -73,24 +73,58 @@ details.
 pip install graf-format
 ```
 
-Python 3.10+. A `graf-viewer` command is installed alongside the library for
-opening and restyling `.graf` files from the shell:
+Python 3.10+. Two commands are installed alongside the library:
 
 ```bash
-graf-viewer figure1.graf --serif --bold
+graf-viewer figure1.graf --serif --bold   # open and restyle from the shell
+graf-upgrade -r ./figures                 # rewrite old files in the current format
 ```
+
+GrAF reads files written by older versions without any conversion — fields added
+since simply take their defaults, and `Graf.unpack_report` says which. Upgrading
+is optional; it makes those defaults explicit and is what eventually allows
+support for old layouts to be retired.
 
 ## Fonts
 
-GrAF bundles a small set of portable fonts so a figure renders consistently on
-a machine that lacks the original author's typefaces. Every bundled font is
-under a licence permitting redistribution (SIL OFL 1.1 or CC0), and each
-family's licence text ships beside it — see
-[`src/graf/assets/fonts/LICENSES/`](src/graf/assets/fonts/LICENSES/).
+A GrAF file states a **font stack** — an ordered list of candidates, most
+specific first, ending in a generic role:
 
-If a file names a font this installation does not bundle, GrAF falls back to a
-default family and warns. The data and layout are unaffected; only the typeface
-changes. That is the trade-off GrAF exists to make.
+```python
+g.style.set_all_font_families(["MFB Oldstyle", "Georgia", "serif"])
+g.style.set_all_font_families("monospace")     # or just ask for a type
+```
+
+Asking for one exact typeface and asking for "any monospace" are the same
+mechanism; the second is simply the shortest stack. Because the stack always
+ends in a role, a reader that has none of the named families still knows what
+kind of type the figure was set in.
+
+Each candidate is looked for among the fonts GrAF bundles, then any directories
+you have added, then the fonts installed on your system. First hit wins. If
+nothing matches, the trailing role decides — so a serif request degrades to
+another serif rather than jumping to a sans face — and GrAF warns once, naming
+what it used. Files also record `resolved_family`, the typeface actually in use
+when the figure was saved, so you can always tell faithful reproduction from
+substitution.
+
+You can set what the generic roles mean on your machine, and point GrAF at your
+own fonts, without waiting for a GrAF release:
+
+```python
+graf.set_font_default("serif", "EB Garamond")
+graf.add_font_path("~/Library/Fonts")
+```
+
+Both persist to a per-user config file (`graf.user_config_path()`), and apply to
+every GrAF figure you open — including files written by someone else. The file
+states the author's intent; your machine states your preference.
+
+GrAF bundles one good face per role (SUSE, MFB Oldstyle, Spline Sans Mono) so
+figures render sensibly out of the box. Every bundled font is under a licence
+permitting redistribution (SIL OFL 1.1 or CC0), and each family's licence text
+ships beside it — see
+[`src/graf/assets/fonts/LICENSES/`](src/graf/assets/fonts/LICENSES/).
 
 ## Documentation
 

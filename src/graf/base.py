@@ -1,3 +1,4 @@
+import copy
 import json
 import matplotlib
 import matplotlib.pyplot as plt
@@ -9,6 +10,8 @@ import pylogfile.base as plf
 from stardust.io import dict_summary
 import matplotlib.font_manager as fm
 import os
+
+from graf import fonts
 from matplotlib.gridspec import GridSpec
 import matplotlib.colors as mcolors
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -363,88 +366,22 @@ class AutoColorMap:
 	def reset(self):
 		self.idx = 0
 
-# Font licences GrAF is willing to redistribute. Every one of these clearly
-# permits bundling the font inside a larger package. Anything merely "free to
-# download" or "free for personal use" does NOT qualify -- see
-# assets/fonts/LICENSES/README.md for the full add-a-font checklist.
-ALLOWED_FONT_LICENSES = ("OFL-1.1", "CC0-1.0", "Apache-2.0", "MIT")
+# Font specification and resolution live in graf.fonts. See that module's
+# docstring for the model: generic roles, ordered font stacks, and local
+# resolution against bundled / user-configured / system fonts.
+fonts.init_resolver(mod_path)
 
-# Family name each generic role falls back to when a .graf asks for a font this
-# installation does not bundle. Keys are the generic names in portable_fonts.json.
-FALLBACK_FONT = "sanserif"
+# Re-exported so `from graf.base import *` keeps working for existing callers.
+ALLOWED_FONT_LICENSES = fonts.ALLOWED_FONT_LICENSES
+GENERIC_ROLES = fonts.GENERIC_ROLES
+SERIF = fonts.SERIF
+SANS_SERIF = fonts.SANS_SERIF
+MONOSPACE = fonts.MONOSPACE
+set_font_default = fonts.set_font_default
+get_font_defaults = fonts.get_font_defaults
+add_font_path = fonts.add_font_path
+available_font_families = fonts.available_font_families
 
-
-def load_fonts(conf_file:str, log:plf.LogPile=None):
-	"""Resolve the bundled font manifest into matplotlib FontProperties.
-
-	Each family gains 'font-regular' / 'font-bold' / 'font-italic' keys holding a
-	FontProperties, or None where that style is not supplied. None is meaningful:
-	callers fall back to the family's regular face rather than silently rendering
-	a different weight.
-	"""
-
-	# Read conf data
-	with open(conf_file, 'r') as fh:
-		conf_data = json.load(fh)
-
-	# Scan over all fonts
-	for ff in conf_data['font-list']:
-
-		# Get font-family name
-		try:
-			ff_name = ff['names'][0]
-		except (KeyError, IndexError):
-			warnings.warn("Font configuration file contains a family with no name; skipping.")
-			continue
-
-		# Read each font type
-		for ft in FONT_TYPES:
-
-			# Check valid data
-			if ft not in ff:
-				warnings.warn(f"Font configuration missing parameter '{ft}' in font-family '{ff_name}'.")
-				ff[f'font-{ft}'] = None
-				continue
-
-			# A style declared as an empty list means "this family has no such
-			# face". Resolve to None and move on -- crucially WITHOUT falling
-			# through to the load below, which previously reused the path left
-			# over from the last iteration and silently substituted the wrong
-			# face (e.g. SUSE italic resolved to SUSE-Bold).
-			if len(ff[ft]) == 0:
-				ff[f'font-{ft}'] = None
-				continue
-
-			font_path = mod_path
-			for fpd in ff[ft]:
-				font_path = os.path.join(font_path, fpd)
-
-			# Try to read font
-			try:
-				ff[f'font-{ft}'] = fm.FontProperties(fname=font_path)
-			except Exception as e:
-				warnings.warn(f"Failed to load font '{ff_name}' ({ft}) from '{font_path}': {e}")
-				ff[f'font-{ft}'] = None
-
-	return conf_data
-
-font_data = load_fonts(os.path.join(mod_path, 'assets', 'portable_fonts.json'))
-
-
-def _find_font_family(family_name:str):
-	"""Return the manifest entry whose 'names' list contains family_name, else None."""
-	for ff_struct in font_data['font-list']:
-		if family_name in ff_struct.get('names', []):
-			return ff_struct
-	return None
-
-
-def available_font_families():
-	"""Every font-family name this installation can resolve, including aliases."""
-	names = []
-	for ff_struct in font_data['font-list']:
-		names.extend(ff_struct.get('names', []))
-	return names
 
 def hexstr_to_rgb(hexstr:str):
 	''' Credit: https://stackoverflow.com/questions/29643352/converting-hex-to-rgb-value-in-python John1024'''
@@ -559,107 +496,272 @@ def _infer_grid_positions(axes, tol=0.01):
 
 	return positions
 
+def _representative_axes(axes):
+	"""Pick the axes whose typography stands for the whole figure.
+
+	GraphStyle is figure-global; matplotlib stores fonts per text artist. Rather
+	than blindly taking axes[0] -- which may be an empty axes or a colorbar --
+	prefer the first one that actually carries a title or an axis label.
+	"""
+
+	for ax in axes:
+		try:
+			if str(ax.get_title()) or str(ax.get_xlabel()) or str(ax.get_ylabel()):
+				return ax
+		except Exception:
+			continue
+	return axes[0]
+
+
 class Font(Packable):
-	
-	def __init__(self, log:plf.LogPile=None):
+	"""A font request: an ordered stack, a weight, a style and a size.
+
+	The stack is the heart of it. `family` is an ordered list of candidates,
+	most specific first, ending in a generic role:
+
+	    ["MFB Oldstyle", "Georgia", "serif"]
+
+	so a reader lacking every named family still knows the figure was set in a
+	serif. Asking for one specific font and asking for "any monospace" are the
+	same mechanism -- ["serif"] is just the degenerate stack.
+
+	`resolved_family` records which family was actually in use when the figure
+	was saved. It is typographic provenance: without it a reader cannot tell
+	faithful reproduction from silent substitution.
+	"""
+
+	def __init__(self, family=None, size:int=12, weight=fonts.NORMAL_WEIGHT,
+				 style:str=fonts.STYLE_NORMAL, log:plf.LogPile=None):
 		super().__init__(log)
-		
+
 		self.use_native = False
-		self.size = 12
-		self.font = "sanserif"
-		self.bold = False
-		self.italic = False
-	
+		self.size = size
+		self.family = fonts.ensure_role(family if family is not None else fonts.SANS_SERIF)
+		self.weight = fonts.normalize_weight(weight)
+		self.style = fonts.normalize_style(style)
+		self.resolved_family = ""
+
 	def set_manifest(self):
-		
+
 		self.manifest.append("use_native")
 		self.manifest.append("size")
-		self.manifest.append("font")
-		self.manifest.append("bold")
-		self.manifest.append("italic")
-	
-	def to_tuple(self):
-		"""Resolve this Font to a (FontProperties, size) pair, or None for native.
+		self.manifest.append("family")
+		self.manifest.append("weight")
+		self.manifest.append("style")
+		self.manifest.append("resolved_family")
 
-		If the requested family is not bundled by this installation, fall back to
-		FALLBACK_FONT and warn rather than failing. That is deliberate: GrAF
-		promises the data and the scientific message survive, and explicitly does
-		NOT promise byte-identical typography across machines. A missing typeface
-		must degrade the look, never block the reconstruction. The warning exists
-		so the drift is visible instead of silent.
+	# -- convenience ---------------------------------------------------------
+
+	@property
+	def bold(self):
+		return self.weight >= fonts.BOLD_WEIGHT
+
+	@bold.setter
+	def bold(self, value):
+		self.weight = fonts.BOLD_WEIGHT if value else fonts.NORMAL_WEIGHT
+
+	@property
+	def italic(self):
+		return self.style in (fonts.STYLE_ITALIC, fonts.STYLE_OBLIQUE)
+
+	@italic.setter
+	def italic(self, value):
+		self.style = fonts.STYLE_ITALIC if value else fonts.STYLE_NORMAL
+
+	@property
+	def role(self):
+		""" The generic role this stack falls back to. """
+		return fonts.stack_role(self.family)
+
+	def set_family(self, family):
+		""" Replace the stack, keeping a trailing generic role. """
+		self.family = fonts.ensure_role(family, role=self.role)
+
+	def prefer(self, family):
+		""" Put a family at the front of the stack as the first choice. """
+		self.family = fonts.ensure_role([family] + list(self.family), role=self.role)
+
+	# -- resolution ----------------------------------------------------------
+
+	def mimic_text(self, text_artist):
+		"""Adopt the family stack, weight, style and size of a matplotlib Text.
+
+		matplotlib already holds a family list per artist, which is a font stack
+		in all but name; a trailing generic role is appended so the request
+		stays meaningful on a machine that has none of the named families.
 		"""
 
-		# Return None if instructed to use native font
+		try:
+			props = text_artist.get_fontproperties()
+		except Exception:
+			return
+
+		try:
+			family = list(props.get_family() or [])
+		except Exception:
+			family = []
+
+		if family:
+			self.family = fonts.ensure_role(family)
+
+		try:
+			self.weight = fonts.normalize_weight(props.get_weight())
+		except Exception:
+			pass
+		try:
+			self.style = fonts.normalize_style(props.get_style())
+		except Exception:
+			pass
+		try:
+			size = props.get_size_in_points()
+			if size:
+				self.size = float(size)
+		except Exception:
+			pass
+
+	def resolve(self, warn=True):
+		""" Resolve to (FontProperties, family_name) against this machine. """
+
 		if self.use_native:
+			return None, ""
+
+		props, resolved = fonts.resolve_font(self.family, weight=self.weight,
+											 style=self.style, warn=warn)
+		self.resolved_family = resolved
+		return props, resolved
+
+	def to_tuple(self):
+		"""Resolve to (FontProperties, size), or None to use matplotlib's default.
+
+		Kept for the callers that only need what matplotlib wants.
+		"""
+
+		props, _ = self.resolve()
+		if props is None:
 			return None
+		return (props, self.size)
 
-		ff_struct = _find_font_family(self.font)
+	def unpack(self, data):
+		""" Read from a packed dict, tolerating the pre-1.0 single-string form. """
 
-		# Requested family is not bundled here -- fall back, loudly.
-		if ff_struct is None:
-			ff_struct = _find_font_family(FALLBACK_FONT)
-			if ff_struct is None:
-				warnings.warn(
-					f"Font family '{self.font}' is not available and neither is the "
-					f"fallback '{FALLBACK_FONT}'; using the matplotlib default."
-				)
-				return None
-			warnings.warn(
-				f"Font family '{self.font}' is not bundled with this GrAF "
-				f"installation; falling back to '{FALLBACK_FONT}'. The figure's data "
-				f"and layout are unaffected, only its typeface."
-			)
+		super().unpack(data)
 
-		# Return bold/italic if present and requested, else the regular face.
-		if self.bold and ff_struct.get('font-bold') is not None:
-			return (ff_struct['font-bold'], self.size)
-		elif self.italic and ff_struct.get('font-italic') is not None:
-			return (ff_struct['font-italic'], self.size)
-		elif ff_struct.get('font-regular') is not None:
-			return (ff_struct['font-regular'], self.size)
+		# Pre-1.0 files stored `font` as one string, with generic roles used as
+		# aliases of specific families. Normalising here means the rest of the
+		# library only ever sees a stack.
+		self.family = fonts.ensure_role(self.family)
+		self.weight = fonts.normalize_weight(self.weight)
+		self.style = fonts.normalize_style(self.style)
 
-		return None
-				
+
 class GraphStyle(Packable):
 	''' Represents style parameters for the graph.'''
 	def __init__(self, log:plf.LogPile=None):
 		super().__init__(log)
-		
+
 		self.supertitle_font = Font()
 		self.title_font = Font()
-		self.graph_font = Font()
-		self.label_font = Font()
-	
-	def set_all_font_families(self, fontfamily:str):
-		""" Set the font family for title, graph and label text. """
+		self.graph_font = Font()		# tick labels
+		self.label_font = Font()		# axis labels
+		self.legend_font = Font()
 
-		if _find_font_family(fontfamily) is None:
-			warnings.warn(
-				f"Font family '{fontfamily}' is not bundled with this GrAF "
-				f"installation. Available: {', '.join(available_font_families())}. "
-				f"It will fall back to '{FALLBACK_FONT}' when rendered."
-			)
+	def all_fonts(self):
+		return (self.supertitle_font, self.title_font, self.graph_font,
+				self.label_font, self.legend_font)
 
-		self.title_font.font = fontfamily
-		self.graph_font.font = fontfamily
-		self.label_font.font = fontfamily
-	
+	def set_all_font_families(self, family):
+		"""Set the font stack for every text element.
+
+		Accepts a single family, a generic role, or an ordered stack:
+
+		    style.set_all_font_families("serif")
+		    style.set_all_font_families(["Helvetica", "Arial", "sans-serif"])
+		"""
+
+		stack = fonts.ensure_role(family)
+		if not stack:
+			raise ValueError("A font family, role, or non-empty stack is required.")
+
+		for font in self.all_fonts():
+			font.family = list(stack)
+
 	def set_all_font_sizes(self, fontsize:int):
 		""" Set the font size for title, graph and label text. """
 
-		if not isinstance(fontsize, (int, float)) or fontsize <= 0:
+		if isinstance(fontsize, bool) or not isinstance(fontsize, (int, float)) or fontsize <= 0:
 			raise ValueError(f"Font size must be a positive number, got {fontsize!r}.")
 
-		self.title_font.size = fontsize
-		self.graph_font.size = fontsize
-		self.label_font.size = fontsize
-	
+		for font in self.all_fonts():
+			font.size = fontsize
+
+	def set_all_font_weights(self, weight):
+		""" Set the font weight (100-900, or a name like 'bold') everywhere. """
+
+		normalized = fonts.normalize_weight(weight)
+		for font in self.all_fonts():
+			font.weight = normalized
+
+	def set_all_font_styles(self, style):
+		""" Set the font style ('normal', 'italic', 'oblique') everywhere. """
+
+		normalized = fonts.normalize_style(style)
+		for font in self.all_fonts():
+			font.style = normalized
+
+	def mimic(self, fig):
+		"""Capture the fonts actually used by a matplotlib figure.
+
+		Previously GrAF never read styling off the source figure at all -- every
+		file was written with default fonts regardless of how the figure looked.
+		matplotlib gives each text artist a family list already, which maps onto
+		a GrAF stack directly.
+		"""
+
+		try:
+			axes = fig.get_axes()
+		except Exception:
+			return
+
+		if fig._suptitle is not None:
+			self.supertitle_font.mimic_text(fig._suptitle)
+
+		if not axes:
+			return
+
+		# GraphStyle is figure-global while matplotlib holds fonts per artist, so
+		# one axes has to speak for the figure. Prefer the first axes that
+		# actually carries text over a blindly-taken axes[0], which may be an
+		# empty or colorbar axes.
+		ax = _representative_axes(axes)
+
+		self.title_font.mimic_text(ax.title)
+
+		# Either axis label is representative; take whichever is set.
+		label_artist = ax.xaxis.label
+		if not str(ax.xaxis.label.get_text()) and str(ax.yaxis.label.get_text()):
+			label_artist = ax.yaxis.label
+		self.label_font.mimic_text(label_artist)
+
+		ticks = ax.get_xticklabels() or ax.get_yticklabels()
+		if ticks:
+			self.graph_font.mimic_text(ticks[0])
+
+		legend = ax.get_legend()
+		if legend is not None and legend.get_texts():
+			self.legend_font.mimic_text(legend.get_texts()[0])
+		else:
+			# No legend to copy from: inherit the label font so a legend added
+			# later matches the rest of the figure rather than reverting to a
+			# default that appears nowhere else on the plot.
+			self.legend_font.mimic_text(label_artist)
+
 	def set_manifest(self):
 		self.obj_manifest.append("supertitle_font")
 		self.obj_manifest.append("title_font")
 		self.obj_manifest.append("graph_font")
 		self.obj_manifest.append("label_font")
-	
+		self.obj_manifest.append("legend_font")
+
 class Surface(Packable):
 	''' Represents a surface or image that can be displayed on a set of axes. 
 	Fundamentally what differentiates a surface from a Trace is if it has a single
@@ -1487,7 +1589,46 @@ class Scale(Packable):
 				ax.set_zlim([lo, hi])
 			else:
 				ax.set_zlim([self.val_min, self.val_max])
-			
+
+		self._apply_tick_font(ax, scale_id)
+
+	def _apply_tick_font(self, ax, scale_id:int):
+		"""Apply the tick-label font.
+
+		GrAF writes explicit ticks on linear scales, so those Text artists
+		persist and can be styled directly. Log scales keep matplotlib's own
+		locator/formatter, which regenerates the tick Texts on every draw and
+		discards per-artist styling -- so size goes through tick_params (which
+		does survive a redraw) and the family is applied best-effort.
+		"""
+
+		font = self.gs.graph_font.to_tuple()
+		axis_name = {Scale.SCALE_ID_X: 'x', Scale.SCALE_ID_Y: 'y', Scale.SCALE_ID_Z: 'z'}.get(scale_id)
+		if axis_name is None:
+			return
+
+		size = font[1] if font is not None else self.gs.graph_font.size
+		try:
+			ax.tick_params(axis=axis_name, labelsize=size)
+		except Exception:
+			pass
+
+		if font is None:
+			return
+
+		getter = {'x': 'get_xticklabels', 'y': 'get_yticklabels', 'z': 'get_zticklabels'}[axis_name]
+		try:
+			labels = getattr(ax, getter)()
+		except Exception:
+			return
+
+		for label in labels:
+			try:
+				label.set_fontproperties(font[0])
+				label.set_fontsize(size)
+			except Exception:
+				pass
+
 
 # TODO: Merge these with Axis.AXIS_LINE2D etc.
 AXISTYPE_LINE = 0
@@ -1542,7 +1683,7 @@ class Axis(Packable):
 	AXIS_LINE3D = "AXIS_LINE3D"
 	AXIS_IMAGE = "AXIS_IMAGE"
 	AXIS_SURFACE = "AXIS_SURFACE"
-	
+
 	def __init__(self, gs:GraphStyle, ax=None, twin_ax=None, log:plf.LogPile=None, position_override=None): #:matplotlib.axes._axes.Axes=None):
 		super().__init__(log)
 
@@ -1840,12 +1981,16 @@ class Axis(Packable):
 
 		loc = self.legend_location if self.legend_location in LEGEND_LOCATIONS else "best"
 
-		local_font = self.gs.label_font.to_tuple()
+		# matplotlib IGNORES `fontsize` when `prop` is given, so passing both
+		# silently dropped the legend's size. Put the size on the
+		# FontProperties itself instead.
+		local_font = self.gs.legend_font.to_tuple()
 		if local_font is not None:
-			ax.legend(handles, labels, loc=loc,
-					  prop=local_font[0], fontsize=local_font[1])
+			props = local_font[0].copy()
+			props.set_size(local_font[1])
+			ax.legend(handles, labels, loc=loc, prop=props)
 		else:
-			ax.legend(handles, labels, loc=loc)
+			ax.legend(handles, labels, loc=loc, fontsize=self.gs.legend_font.size)
 
 	def image_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None, fig=None):
 
@@ -1927,6 +2072,38 @@ class MetaInfo(Packable):
 		self.manifest.append("provenance")
 		self.manifest.append("history")
 	
+# ==============================================================================
+# Legacy files
+# ------------------------------------------------------------------------------
+# Files written before format 1.0 declare "0.0.0". They are readable: stardust's
+# unpack keeps the default for any field a file does not contain, so the fields
+# added in 1.0 simply take their defaults and everything else loads normally.
+#
+# No per-field migration code is needed for that, and none is kept. What IS kept
+# is the check after loading (Graf._verify_load): tolerant unpacking is only safe
+# if the caller finds out what was tolerated, and for an archive format a load
+# that quietly returns less data than the file contains is the worst failure
+# available.
+#
+# What a pre-1.0 file loses, and why that is acceptable:
+#   * fonts     -- pre-1.0 stored font/bold/italic; 1.0 stores a family stack
+#                  plus weight/style. The old fields are ignored and the
+#                  defaults apply.
+#   * legends   -- pre-1.0 never recorded legend visibility and never drew one,
+#                  so defaulting to hidden reproduces how the file rendered.
+#
+# Both are cosmetic. Every number, axis setting, label and trace style loads
+# unchanged. Run `graf-upgrade` to rewrite a file in the current format.
+# ==============================================================================
+
+LEGACY_FORMAT_VERSIONS = ("0.0.0",)
+
+
+def is_legacy_version(file_version) -> bool:
+	""" True if this is a pre-1.0 file that GrAF can still read. """
+	return str(file_version) in LEGACY_FORMAT_VERSIONS
+
+
 class Graf(Packable):
 	""" Class used to read, write and extract data from GrAF files.
 	"""
@@ -1957,6 +2134,11 @@ class Graf(Packable):
 		''' Tells the Graf object to mimic the matplotlib figure as best as possible. '''
 		
 		self.log.debug(f"Mimicing figure {fig}")
+
+		# Capture the figure's actual typography. This used to be a commented-out
+		# `# self.style = ...`, so every file was written with default fonts no
+		# matter how the source figure looked.
+		self.style.mimic(fig)
 		
 		# self.style = ...
 		# self.info = ...
@@ -2152,7 +2334,12 @@ class Graf(Packable):
 		else:
 			gen_fig = plt.figure(window_title, figsize=figsize)
 		
-		gen_fig.suptitle(self.supertitle)
+		sup_font = self.style.supertitle_font.to_tuple()
+		if sup_font is not None:
+			gen_fig.suptitle(self.supertitle, fontproperties=sup_font[0],
+							 size=sup_font[1])
+		else:
+			gen_fig.suptitle(self.supertitle, size=self.style.supertitle_font.size)
 		
 		# Check for empty graf
 		if len(self.axes) == 0:
@@ -2301,6 +2488,14 @@ class Graf(Packable):
 		                        writing (default False). This is a debugging aid
 		                        only -- a library must not print on a normal save.
 		"""
+		# Whatever is written here IS the current format, by construction. A file
+		# read from an older version keeps that version in info.version until it
+		# is rewritten -- without this the upgraded file would be written in the
+		# new layout while still claiming the old one, which is worse than not
+		# upgrading at all.
+		self.info.version = GRAF_FORMAT_VERSION
+		self.info.source_version = _library_version()
+
 		# Hash the data BEFORE stamping (stamping mutates provenance/history).
 		content_hash = self._data_hash()
 		self._stamp_provenance(content_hash=content_hash, source_app=source_app,
@@ -2372,7 +2567,20 @@ class Graf(Packable):
 				f"{GRAF_FORMAT_VERSION}. It may have been written by a pre-release "
 				f"version of GrAF."
 			)
-		elif strict_version:
+
+		# Pre-1.0 files are read, not refused: the data is the point, and only
+		# cosmetics differ. Fields added since simply take their defaults.
+		legacy = is_legacy_version(file_version)
+		if legacy:
+			warnings.warn(
+				f"'{filename}' was written by a pre-release GrAF (format "
+				f"{file_version}). All data, axis settings, labels and trace "
+				f"styling load normally; fonts and legend visibility fall back "
+				f"to defaults because that version stored them differently. "
+				f"Run 'graf-upgrade' to rewrite it in format "
+				f"{GRAF_FORMAT_VERSION}."
+			)
+		elif file_version is not None and strict_version:
 			check_format_version(file_version)
 
 		try:
@@ -2384,6 +2592,46 @@ class Graf(Packable):
 				f"'{filename}' parsed as a GrAF document but could not be "
 				f"interpreted: {e}"
 			) from e
+
+		self._verify_load(filename, datapacket)
+
+	def _verify_load(self, filename:str, datapacket:dict):
+		"""Confirm the unpack actually populated what the file contained.
+
+		The serializer abandons an object at the first field it cannot resolve
+		and returns quietly, so a schema mismatch shows up as missing DATA
+		rather than as an error -- a file whose traces silently vanished still
+		"loads". For an archive format that is the worst failure mode there is,
+		so it is checked explicitly rather than trusted.
+		"""
+
+		file_axes = datapacket.get('axes')
+		if not isinstance(file_axes, dict):
+			return
+
+		if len(self.axes) != len(file_axes):
+			raise GrafFormatError(
+				f"'{filename}' contains {len(file_axes)} axes but only "
+				f"{len(self.axes)} could be loaded. The file's layout does not "
+				f"match this version of GrAF."
+			)
+
+		for key, file_axis in file_axes.items():
+			if not isinstance(file_axis, dict) or key not in self.axes:
+				continue
+			loaded = self.axes[key]
+
+			for collection in ('traces', 'surfaces'):
+				expected = file_axis.get(collection)
+				if not isinstance(expected, dict):
+					continue
+				got = getattr(loaded, collection, {})
+				if len(got) != len(expected):
+					raise GrafFormatError(
+						f"'{filename}': axis '{key}' contains "
+						f"{len(expected)} {collection} but only {len(got)} "
+						f"could be loaded. Data would have been silently lost."
+					)
 
 def save_graf(figure, filename, description:str="", conditions:dict=None,
 			  source_app:str=None, source_file:str=None, source_format:str=None,

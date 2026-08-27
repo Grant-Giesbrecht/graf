@@ -13,6 +13,48 @@ The first release intended for general use. Everything before this was a `dev`
 prerelease, so the changes below are described relative to `0.0.0.dev4` rather
 than to a supported version.
 
+### File format — BREAKING
+
+The on-disk layout is now **format version 1.0**, tracked separately from the
+library version. It supersedes the unversioned pre-release layout, which
+declared `0.0.0`.
+
+**Pre-1.0 files remain readable**, with no migration code involved. All data,
+axis configuration, scales, trace styling, titles and provenance load unchanged;
+only fonts and legend visibility fall back to defaults, because those were
+stored differently. `Graf.unpack_report` lists exactly which fields defaulted.
+The file on disk is never modified by reading it.
+
+The new **`graf-upgrade`** command rewrites files in the current format,
+recording those defaults explicitly. It writes a `.bak` beside each file, is
+idempotent, appends an entry to the file's history, and leaves the immutable
+creation record alone. See [FORMAT.md §11](FORMAT.md).
+
+| Object | Change |
+|---|---|
+| `Font` | `font` (string) replaced by `family` (an ordered **font stack**) |
+| `Font` | `bold` / `italic` booleans replaced by `weight` (100-900) and `style` (`normal`/`italic`/`oblique`). `.bold` / `.italic` remain as computed properties but are no longer stored |
+| `Font` | added `resolved_family` — the typeface actually in use when written |
+| `GraphStyle` | added `legend_font`; the legend previously borrowed `label_font` |
+| `Axis` | added `legend_on` and `legend_location`; legends were previously lost entirely |
+| `MetaInfo` | `version` now means the *format* version (was a library version); `source_version` now records the writing library |
+| provenance | `graf_version` split into `graf_format_version` and `graf_library_version` |
+
+The format is now specified in [FORMAT.md](FORMAT.md), and
+`tests/test_format_schema.py` locks the field list so no future change to it can
+happen as a side effect of an ordinary refactor.
+
+**Silent partial loads are now impossible.** The serializer used to abandon an
+object at the first field it could not resolve and return quietly, so adding a
+single cosmetic field (`Axis.legend_on`) made pre-1.0 files load with *every
+trace missing* and no error raised. Fixed at the root in **stardust-tools
+0.2.0** (now the minimum required version): a missing field keeps its default,
+the load continues, and an `UnpackReport` records what was absent. GrAF also
+verifies after loading that the number of axes, traces and surfaces matches the
+document, raising `GrafFormatError` on any shortfall.
+`tests/test_legacy_compat.py` regression-tests this against a real pre-release
+file committed at `tests/data/`.
+
 ### Fixed
 
 - **The built wheel did not import.** `[tool.setuptools.package-data]` used

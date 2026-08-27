@@ -1,17 +1,33 @@
 {
 	"_comment": [
-		"Fonts GrAF bundles so a .graf file renders consistently on a machine that",
-		"lacks the original author's fonts. Every entry MUST carry licence metadata:",
-		"see assets/fonts/LICENSES/README.md for the policy and the add-a-font",
-		"checklist. tests/test_fonts.py enforces that these fields are present and",
-		"that each referenced licence file actually ships."
+		"Fonts GrAF bundles so a .graf renders consistently on a machine lacking",
+		"the author's typefaces.",
+		"",
+		"NOTE: 'aliases' must never contain a generic role ('serif', 'sans-serif',",
+		"'monospace'). Roles are declared by the 'role' field and bound to a",
+		"concrete family by 'role_defaults' below. Keeping them separate is what",
+		"lets a .graf say either 'MFB Oldstyle' or 'any serif' and mean different",
+		"things -- and lets a user override the latter without touching the former.",
+		"",
+		"Every family MUST carry licence metadata; see",
+		"assets/fonts/LICENSES/README.md for the policy and the add-a-font",
+		"checklist. tests/test_fonts.py enforces it."
 	],
-	"font-list": [
+	"schema": "2.0",
+	"role_defaults": {
+		"serif": "MFB Oldstyle",
+		"sans-serif": "SUSE",
+		"monospace": "Spline Sans Mono"
+	},
+	"families": [
 		{
-			"names": ["suse", "opensuse", "sanserif"],
-			"regular": ["assets", "fonts", "SUSE-Regular.ttf"],
-			"italic": [],
-			"bold": ["assets", "fonts", "SUSE-Bold.ttf"],
+			"family": "SUSE",
+			"aliases": ["suse", "opensuse"],
+			"role": "sans-serif",
+			"faces": [
+				{"weight": 400, "style": "normal", "file": ["assets", "fonts", "SUSE-Regular.ttf"]},
+				{"weight": 700, "style": "normal", "file": ["assets", "fonts", "SUSE-Bold.ttf"]}
+			],
 			"license": "OFL-1.1",
 			"copyright": "Copyright 2024 The SUSE Project Authors",
 			"source_url": "https://github.com/SUSE/suse-font",
@@ -19,20 +35,28 @@
 			"notes": "'SUSE' is a trademark of SUSE; the OFL licenses the font files, not the mark."
 		},
 		{
-			"names": ["mfb_oldstyle", "mfb", "serif"],
-			"regular": ["assets", "fonts", "MFBOldstyle-Regular.otf"],
-			"italic": ["assets", "fonts", "MFBOldstyle-Italic.otf"],
-			"bold": ["assets", "fonts", "MFBOldstyle-Bold.otf"],
+			"family": "MFB Oldstyle",
+			"aliases": ["mfb_oldstyle", "mfb", "mfboldstyle"],
+			"role": "serif",
+			"faces": [
+				{"weight": 400, "style": "normal", "file": ["assets", "fonts", "MFBOldstyle-Regular.otf"]},
+				{"weight": 700, "style": "normal", "file": ["assets", "fonts", "MFBOldstyle-Bold.otf"]},
+				{"weight": 400, "style": "italic", "file": ["assets", "fonts", "MFBOldstyle-Italic.otf"]}
+			],
 			"license": "CC0-1.0",
 			"copyright": "Public domain (CC0 1.0 Universal)",
 			"source_url": "https://creativecommons.org/publicdomain/zero/1.0/",
 			"license_file": ["assets", "fonts", "LICENSES", "CC0-MFBOldstyle.txt"]
 		},
 		{
-			"names": ["spline", "mono", "monospace"],
-			"regular": ["assets", "fonts", "SplineSansMono-Regular.ttf"],
-			"italic": ["assets", "fonts", "SplineSansMono-Italic.ttf"],
-			"bold": ["assets", "fonts", "SplineSansMono-Bold.ttf"],
+			"family": "Spline Sans Mono",
+			"aliases": ["spline", "splinesansmono"],
+			"role": "monospace",
+			"faces": [
+				{"weight": 400, "style": "normal", "file": ["assets", "fonts", "SplineSansMono-Regular.ttf"]},
+				{"weight": 700, "style": "normal", "file": ["assets", "fonts", "SplineSansMono-Bold.ttf"]},
+				{"weight": 400, "style": "italic", "file": ["assets", "fonts", "SplineSansMono-Italic.ttf"]}
+			],
 			"license": "OFL-1.1",
 			"copyright": "Copyright 2022 The Spline Sans Mono Project Authors",
 			"source_url": "https://github.com/SorkinType/SplineSansMono",
