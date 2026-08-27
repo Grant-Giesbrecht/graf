@@ -2,20 +2,102 @@
 <img src="https://github.com/Grant-Giesbrecht/graf/blob/main/docs/images/graf_logo.png?raw=True" width="600">
 </h1><br>
 
-GrAF is a file format which allows you to save graphs, including the data and format settings. 
+**GrAF** (Graph Archive Format) is a file format for saving graphs — the data
+and the formatting together — in a way that stays readable across languages and
+across the years.
 
-## Where does this fit compared to other formats?
+```python
+import graf
+import matplotlib.pyplot as plt
 
-There are certainly other formats for saving graphs. One on end of the spectrum, you have 'visual' mechanisms for storing the graph such as PNGs or other bitmap formats. These formats guarantee an accurate representation of your graph, including perfect representation of the styling, however it does not contain the raw data. If you want to access the data later, you'll have to visually infer what the points are.
+fig, ax = plt.subplots()
+ax.plot(frequency, power, label='measured')
+ax.legend()
 
-On the other end of the spectrum, you have the GrAF format. GrAF does not guarantee that the graph will look _exactly_ the same; fonts, line sizes, etc can vary between platforms. However, the core promise of GrAF is that the key aspects of the graph for scientific communication _will_ be retained. The data will be saved as a list of floats in a way that's easy to access, and formatting parameters critical to the visual language of data expression such as graph limits, line types and marker selection, will all be retained. In other words, the data will be accessible, the message of the graph will be preserved, and the formatting can be easily adjusted to match your needs of the day. You can open multiple graf files from previous publications and quickly restyle them to offer a cohesive theme for a new presentation. Or you can quickly merge the data from multiple plots into one, or change the plot type to better convey your point. 
+graf.save_graf(fig, 'figure1.graf')     # data + formatting, both preserved
+fig = graf.load_graf('figure1.graf')    # reopen it anywhere, any time
+```
 
-(Mention how SVG sits inbetween bitmaps and GrAF; preserves formatting kinda, is editable, but loses the data.)
-(Mention how Pickled figs are great in Python (perfect formatting and data!) but are complex to access due to their formatting sophistication and cannot easily be read in other languages )
-(Mention how MATLAB figs are similar to Pklfigs in that they have perfect formatting and store data, but once again, are not easily cross platform and so complex quickly merging files is not trivial. )
+## Where this fits compared to other formats
 
-(TODO: Add a function to spit out the X and Y data as variables in ipython and/or print to screen.)
+Ways of saving a graph sit on a spectrum, and the trade-off is always the same:
+fidelity of appearance versus access to the underlying data.
 
-The key promise of GrAF is that it will retain the graph data in a way that's easy to access
+| Format | Formatting | Data | Cross-language |
+|---|---|---|---|
+| PNG / bitmap | Exact | **Lost** — you must read points off the picture | Yes |
+| SVG | Mostly preserved, editable | **Lost** — shapes, not measurements | Yes |
+| Pickled matplotlib figure | Exact | Present, but tangled in matplotlib's object graph | **No** — Python only |
+| MATLAB `.fig` | Exact | Present, similarly hard to reach | **No** — MATLAB only |
+| **GrAF** | Key aspects preserved | **Plain lists of floats, trivially accessible** | **Yes** |
 
+GrAF sits deliberately at one end of it. It does *not* promise the graph will
+look pixel-identical everywhere — fonts, line weights and sizing can vary
+between platforms. What it promises is that **the aspects of the figure that
+carry scientific meaning survive**: the data is stored as plain floats that are
+easy to read in any language, and the formatting that constitutes the visual
+language of the plot — axis limits, scales, line types, markers, colours,
+labels, legends — comes back with it.
 
+That makes some things easy that are otherwise tedious:
+
+- Reopen figures from old publications and restyle them to a single coherent
+  theme for a new talk.
+- Merge data from several plots into one.
+- Change the plot type to better convey a point, without hunting for the
+  original script.
+- Pull the raw numbers back out years later, from a language that did not exist
+  when you saved them.
+
+## Provenance
+
+Every GrAF file records where it came from. A creation record is written once
+and never rewritten; a mutation history is appended to whenever the data
+changes. Both are stamped automatically on save, so a file cannot be written
+without them:
+
+```python
+g = graf.Graf()
+g.read_graf('figure1.graf')
+
+g.info.provenance   # who/what/when created it, and on what machine
+g.info.history      # append-only record of every change since
+```
+
+Pass `include_system_info=False` to `save_graf` to omit hostname and machine
+details.
+
+## Installation
+
+```bash
+pip install graf-format
+```
+
+Python 3.10+. A `graf-viewer` command is installed alongside the library for
+opening and restyling `.graf` files from the shell:
+
+```bash
+graf-viewer figure1.graf --serif --bold
+```
+
+## Fonts
+
+GrAF bundles a small set of portable fonts so a figure renders consistently on
+a machine that lacks the original author's typefaces. Every bundled font is
+under a licence permitting redistribution (SIL OFL 1.1 or CC0), and each
+family's licence text ships beside it — see
+[`src/graf/assets/fonts/LICENSES/`](src/graf/assets/fonts/LICENSES/).
+
+If a file names a font this installation does not bundle, GrAF falls back to a
+default family and warns. The data and layout are unaffected; only the typeface
+changes. That is the trade-off GrAF exists to make.
+
+## Documentation
+
+Full documentation, including tutorials, is at
+[graf.readthedocs.io](https://graf.readthedocs.io).
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Bundled fonts carry their own licences, noted
+above.

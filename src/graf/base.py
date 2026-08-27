@@ -1,11 +1,8 @@
-import h5py
 import json
-import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 from abc import ABC, abstractmethod
-# from stardust.io import hdf_to_dict, dict_to_hdf
 from stardust.tome import dict_to_tome, tome_to_dict
 from stardust.serializer import Packable
 import pylogfile.base as plf
@@ -35,8 +32,86 @@ import datetime
 # 4. Add 3D support (surface)     -- DONE
 #
 
-GRAF_VERSION = "0.0.0"
+# ==============================================================================
+# Versioning
+# ------------------------------------------------------------------------------
+# Two versions matter here and they are NOT the same thing:
+#
+#   GRAF_FORMAT_VERSION  the on-disk file layout. Changes only when the shape of
+#                        a .graf file changes. This is what a reader validates.
+#   _library_version()   the version of this Python package, taken from the
+#                        installed distribution metadata so there is exactly one
+#                        source of truth (pyproject.toml). Recorded in files for
+#                        provenance; never used to decide readability.
+#
+# Compatibility rule for the format version, MAJOR.MINOR:
+#   * different MAJOR  -> refuse to read (GrafVersionError). The layout changed
+#                         incompatibly and guessing would corrupt the science.
+#   * newer MINOR      -> read, but warn. Minor bumps are additive, so an older
+#                         reader gets the data and merely misses new fields.
+#   * same/older MINOR -> read silently.
+# ==============================================================================
+
+GRAF_FORMAT_VERSION = "1.0"
 PROVENANCE_SCHEMA = "1.0"   # version of the info.provenance / info.history layout
+
+# Extension every GrAF file is expected to carry.
+GRAF_EXTENSION = ".graf"
+
+
+class GrafError(Exception):
+	""" Base class for all GrAF errors. """
+
+
+class GrafFormatError(GrafError):
+	""" Raised when a file is not a readable GrAF file. """
+
+
+class GrafVersionError(GrafFormatError):
+	""" Raised when a file's format version cannot be read by this library. """
+
+
+def _library_version() -> str:
+	""" Version of the installed graf-format distribution (single source of truth). """
+	try:
+		from importlib.metadata import version as _v
+		return _v("graf-format")
+	except Exception:
+		return "0.0.0+unknown"
+
+
+def _parse_format_version(value):
+	""" Parse a 'MAJOR.MINOR' format version into an (int, int) tuple. """
+	try:
+		parts = str(value).split('.')
+		return (int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+	except (ValueError, IndexError, AttributeError):
+		raise GrafVersionError(
+			f"Unintelligible GrAF format version: {value!r}. Expected 'MAJOR.MINOR'."
+		)
+
+
+def check_format_version(file_version):
+	"""Validate a file's format version against what this library can read.
+
+	Raises GrafVersionError on an incompatible MAJOR; warns on a newer MINOR.
+	"""
+	file_major, file_minor = _parse_format_version(file_version)
+	our_major, our_minor = _parse_format_version(GRAF_FORMAT_VERSION)
+
+	if file_major != our_major:
+		raise GrafVersionError(
+			f"This file uses GrAF format version {file_version}, but this library "
+			f"reads format {our_major}.x. Install a GrAF version that supports "
+			f"format {file_major}.x to open it."
+		)
+
+	if file_minor > our_minor:
+		warnings.warn(
+			f"This file uses GrAF format version {file_version}, newer than this "
+			f"library's {GRAF_FORMAT_VERSION}. It will be read, but any fields "
+			f"added after {GRAF_FORMAT_VERSION} will be ignored."
+		)
 LINE_TYPES = ["-", "-.", ":", "--", "None"]
 
 # gid tag applied to the invisible marker-only companion artists that
@@ -44,6 +119,9 @@ LINE_TYPES = ["-", "-.", ":", "--", "None"]
 # docstring). mimic() looks for this tag so those helper artists don't get
 # saved as duplicate traces.
 CURSOR_MARKER_GID = "_graf_cursor_marker"
+LEGEND_LOCATIONS = ["best", "upper right", "upper left", "lower left",
+					"lower right", "right", "center left", "center right",
+					"lower center", "upper center", "center"]
 MARKER_TYPES = [".", "+", "^", "v", "o", "x", "[]", "|", "_", "*", "None"]
 FONT_TYPES = ['regular', 'bold', 'italic']
 
@@ -71,7 +149,7 @@ def _utc_now_iso() -> str:
 
 def _library_identity() -> str:
 	"""Identity of the library doing the writing (not the app on top of it)."""
-	return f"GrAF {GRAF_VERSION} (Python {platform.python_version()})"
+	return f"GrAF {_library_version()} (Python {platform.python_version()})"
 
 
 def _creating_script() -> str:
@@ -190,18 +268,21 @@ def _sha256_file(path: str) -> str:
 	except Exception:
 		return ""
 
+# Locate the installed package directory so bundled assets (fonts, icons) can be
+# found whether GrAF is running from a source checkout or an installed wheel.
+# importlib.resources.files() requires Python >= 3.9; this package requires 3.10.
+import importlib.resources
+
 try:
-	# Requires Python >= 3.9
-	import importlib.resources
-	mod_path_mp = importlib.resources.files("graf")
-	mod_path = str((mod_path_mp / ''))
-except AttributeError as e:
-	help_data = {}
-	print(f"{Fore.LIGHTRED_EX}Upgrade to Python >= 3.9 for access to standardized fonts. ({e})")
+	mod_path = str(importlib.resources.files("graf") / '')
 except Exception as e:
-	help_data = {}
-	print(__name__)
-	print(f"{Fore.LIGHTRED_EX}An error occured. ({e}){Style.RESET_ALL}")
+	# Fall back to this file's own directory. Losing the assets is a degraded
+	# state, not a fatal one -- matplotlib's default fonts still render.
+	mod_path = os.path.dirname(os.path.abspath(__file__))
+	warnings.warn(
+		f"Could not locate the GrAF package directory via importlib.resources "
+		f"({e}); falling back to {mod_path}. Bundled fonts may be unavailable."
+	)
 
 def sample_colormap(cmap_name:str=None, listed_cmap:mcolors.ListedColormap=None, N:int=20, trim_in:tuple=None):
 	''' Discretizes a colormap, returning a list of rgb lists from the provided
@@ -282,47 +363,88 @@ class AutoColorMap:
 	def reset(self):
 		self.idx = 0
 
-def load_fonts(conf_file:str):
-	
+# Font licences GrAF is willing to redistribute. Every one of these clearly
+# permits bundling the font inside a larger package. Anything merely "free to
+# download" or "free for personal use" does NOT qualify -- see
+# assets/fonts/LICENSES/README.md for the full add-a-font checklist.
+ALLOWED_FONT_LICENSES = ("OFL-1.1", "CC0-1.0", "Apache-2.0", "MIT")
+
+# Family name each generic role falls back to when a .graf asks for a font this
+# installation does not bundle. Keys are the generic names in portable_fonts.json.
+FALLBACK_FONT = "sanserif"
+
+
+def load_fonts(conf_file:str, log:plf.LogPile=None):
+	"""Resolve the bundled font manifest into matplotlib FontProperties.
+
+	Each family gains 'font-regular' / 'font-bold' / 'font-italic' keys holding a
+	FontProperties, or None where that style is not supplied. None is meaningful:
+	callers fall back to the family's regular face rather than silently rendering
+	a different weight.
+	"""
+
 	# Read conf data
 	with open(conf_file, 'r') as fh:
 		conf_data = json.load(fh)
-	
+
 	# Scan over all fonts
 	for ff in conf_data['font-list']:
-		
+
 		# Get font-family name
 		try:
 			ff_name = ff['names'][0]
-		except:
-			print(f"font configuration file missing font name!.")
+		except (KeyError, IndexError):
+			warnings.warn("Font configuration file contains a family with no name; skipping.")
 			continue
-		
+
 		# Read each font type
 		for ft in FONT_TYPES:
-			
+
 			# Check valid data
 			if ft not in ff:
-				print(f"font configuration file missing parameter: {ft} in font-family {ff_name}.")
+				warnings.warn(f"Font configuration missing parameter '{ft}' in font-family '{ff_name}'.")
+				ff[f'font-{ft}'] = None
 				continue
-			
-			# If path is valid, set font object to None
+
+			# A style declared as an empty list means "this family has no such
+			# face". Resolve to None and move on -- crucially WITHOUT falling
+			# through to the load below, which previously reused the path left
+			# over from the last iteration and silently substituted the wrong
+			# face (e.g. SUSE italic resolved to SUSE-Bold).
 			if len(ff[ft]) == 0:
 				ff[f'font-{ft}'] = None
-			else:
-				font_path = mod_path
-				for fpd in ff[ft]:
-					font_path = os.path.join(font_path, fpd)
-			
+				continue
+
+			font_path = mod_path
+			for fpd in ff[ft]:
+				font_path = os.path.join(font_path, fpd)
+
 			# Try to read font
 			try:
 				ff[f'font-{ft}'] = fm.FontProperties(fname=font_path)
-			except:
+			except Exception as e:
+				warnings.warn(f"Failed to load font '{ff_name}' ({ft}) from '{font_path}': {e}")
 				ff[f'font-{ft}'] = None
-	
+
 	return conf_data
 
 font_data = load_fonts(os.path.join(mod_path, 'assets', 'portable_fonts.json'))
+
+
+def _find_font_family(family_name:str):
+	"""Return the manifest entry whose 'names' list contains family_name, else None."""
+	for ff_struct in font_data['font-list']:
+		if family_name in ff_struct.get('names', []):
+			return ff_struct
+	return None
+
+
+def available_font_families():
+	"""Every font-family name this installation can resolve, including aliases."""
+	names = []
+	for ff_struct in font_data['font-list']:
+		names.extend(ff_struct.get('names', []))
+	return names
 
 def hexstr_to_rgb(hexstr:str):
 	''' Credit: https://stackoverflow.com/questions/29643352/converting-hex-to-rgb-value-in-python John1024'''
@@ -457,27 +579,45 @@ class Font(Packable):
 		self.manifest.append("italic")
 	
 	def to_tuple(self):
-		
-		#TODO: Apply a default font if family not found
-		
+		"""Resolve this Font to a (FontProperties, size) pair, or None for native.
+
+		If the requested family is not bundled by this installation, fall back to
+		FALLBACK_FONT and warn rather than failing. That is deliberate: GrAF
+		promises the data and the scientific message survive, and explicitly does
+		NOT promise byte-identical typography across machines. A missing typeface
+		must degrade the look, never block the reconstruction. The warning exists
+		so the drift is visible instead of silent.
+		"""
+
 		# Return None if instructed to use native font
 		if self.use_native:
 			return None
-		
-		# Otherwise look for font family
-		for ff_stuct in font_data['font-list']:
-			
-			# Found font family
-			if self.font in ff_stuct['names']:
-				
-				# Return bold if present and requested
-				if self.bold and ff_stuct['font-bold'] is not None:
-					return (ff_stuct['font-bold'], self.size)
-				elif self.italic and ff_stuct['font-italic'] is not None:
-					return (ff_stuct['font-italic'], self.size)
-				elif ff_stuct['font-regular'] is not None:
-					return (ff_stuct['font-regular'], self.size)
-		
+
+		ff_struct = _find_font_family(self.font)
+
+		# Requested family is not bundled here -- fall back, loudly.
+		if ff_struct is None:
+			ff_struct = _find_font_family(FALLBACK_FONT)
+			if ff_struct is None:
+				warnings.warn(
+					f"Font family '{self.font}' is not available and neither is the "
+					f"fallback '{FALLBACK_FONT}'; using the matplotlib default."
+				)
+				return None
+			warnings.warn(
+				f"Font family '{self.font}' is not bundled with this GrAF "
+				f"installation; falling back to '{FALLBACK_FONT}'. The figure's data "
+				f"and layout are unaffected, only its typeface."
+			)
+
+		# Return bold/italic if present and requested, else the regular face.
+		if self.bold and ff_struct.get('font-bold') is not None:
+			return (ff_struct['font-bold'], self.size)
+		elif self.italic and ff_struct.get('font-italic') is not None:
+			return (ff_struct['font-italic'], self.size)
+		elif ff_struct.get('font-regular') is not None:
+			return (ff_struct['font-regular'], self.size)
+
 		return None
 				
 class GraphStyle(Packable):
@@ -491,15 +631,25 @@ class GraphStyle(Packable):
 		self.label_font = Font()
 	
 	def set_all_font_families(self, fontfamily:str):
-		
-		#TODO: Validate that font family exists
+		""" Set the font family for title, graph and label text. """
+
+		if _find_font_family(fontfamily) is None:
+			warnings.warn(
+				f"Font family '{fontfamily}' is not bundled with this GrAF "
+				f"installation. Available: {', '.join(available_font_families())}. "
+				f"It will fall back to '{FALLBACK_FONT}' when rendered."
+			)
+
 		self.title_font.font = fontfamily
 		self.graph_font.font = fontfamily
 		self.label_font.font = fontfamily
 	
 	def set_all_font_sizes(self, fontsize:int):
-		
-		#TODO: Validate that font family exists
+		""" Set the font size for title, graph and label text. """
+
+		if not isinstance(fontsize, (int, float)) or fontsize <= 0:
+			raise ValueError(f"Font size must be a positive number, got {fontsize!r}.")
+
 		self.title_font.size = fontsize
 		self.graph_font.size = fontsize
 		self.label_font.size = fontsize
@@ -559,7 +709,7 @@ class Surface(Packable):
 		elif isinstance(mpl_source, AxesImage):
 			self._mimic_axesiamge(mpl_source)
 		else:
-			print(f"WARNING: Unrecognized data type {type(mpl_source)} will be ignored.")
+			warnings.warn(f"Unrecognized data type {type(mpl_source)} will be ignored.")
 	
 	def _mimic_colorbar(self, mpl_source):
 		''' Captures colorbar properties if the mappable has an associated colorbar. '''
@@ -1256,7 +1406,7 @@ class Scale(Packable):
 			except Exception:
 				self.scale_type = "linear"
 		else:
-			print(f"ERROR: Unrecognized Scale-id: {scale_id}")
+			warnings.warn(f"Unrecognized Scale-id: {scale_id}")
  
 	def _log_safe_limits(self):
 		''' Keep limits strictly positive so set_*lim won't choke on a log axis
@@ -1345,6 +1495,34 @@ AXISTYPE_SURFACE = 1
 AXISTYPE_IMAGE = 2
 AXISTYPE_UNKNOWN = -1
 
+def _mimic_legend(ax, twin_ax=None):
+	"""Return (legend_shown, location) for a matplotlib axes.
+
+	matplotlib stores the legend's resolved location as an internal code; GrAF
+	stores the human-readable string so the value survives into a file another
+	language can read. A twinned pair may host the legend on either axes.
+	"""
+
+	legend = ax.get_legend()
+	if legend is None and twin_ax is not None:
+		legend = twin_ax.get_legend()
+
+	if legend is None:
+		return False, "best"
+
+	loc = "best"
+	try:
+		raw = legend._get_loc()
+		if isinstance(raw, str):
+			loc = raw
+		elif isinstance(raw, int) and 0 <= raw < len(LEGEND_LOCATIONS):
+			loc = LEGEND_LOCATIONS[raw]
+	except Exception:
+		pass
+
+	return True, loc
+
+
 def get_axis_type(mpl_axis):
 	''' Returns a code for the type of data contained. '''
 	
@@ -1379,6 +1557,12 @@ class Axis(Packable):
 		self.y_axis_R = Scale(gs)
 		self.z_axis = Scale(gs)
 		self.grid_on = False
+		# Whether the source axes displayed a legend. Per-trace
+		# `include_in_legend` says which entries belong in it; this says whether
+		# the legend was shown at all. Without it, reconstruction silently
+		# dropped every legend.
+		self.legend_on = False
+		self.legend_location = "best"
 		self.traces = {}
 		self.surfaces = {}
 		self.title = ""
@@ -1397,6 +1581,8 @@ class Axis(Packable):
 		self.obj_manifest.append("y_axis_R")
 		self.obj_manifest.append("z_axis")
 		self.manifest.append("grid_on")
+		self.manifest.append("legend_on")
+		self.manifest.append("legend_location")
 		self.dict_manifest["traces"] = Trace()
 		self.dict_manifest["surfaces"] = Surface()
 		self.manifest.append("title")
@@ -1434,10 +1620,10 @@ class Axis(Packable):
 				main_ax = twin
 				twin_ax = ax
 			else:
-				print(f"ERROR: Improperly paired axes associated as twins. Skipping.")
+				warnings.warn("Improperly paired axes associated as twins. Skipping.")
 				return
 		
-		print(f"Initializing scales.")
+		self.log.debug("Initializing scales.")
 		
 		# self.relative_size = []
 		self.x_axis = Scale(self.gs, ax=main_ax, scale_id=Scale.SCALE_ID_X, log=self.log)
@@ -1459,6 +1645,10 @@ class Axis(Packable):
 				self.grid_on = False
 			else:
 				self.grid_on = main_ax.xaxis.get_gridlines()[0].get_visible()
+
+		# Record whether a legend was displayed, and where. A twinned pair keeps
+		# its legend on whichever axes owns it.
+		self.legend_on, self.legend_location = _mimic_legend(main_ax, twin_ax)
 		
 		# Collect Line2D objects owned by ErrorbarContainers so they are not
 		# double-counted in the plain-line pass below.
@@ -1550,6 +1740,8 @@ class Axis(Packable):
 		else:
 			self.grid_on = ax.xaxis.get_gridlines()[0].get_visible()
 
+		self.legend_on, self.legend_location = _mimic_legend(ax)
+
 		self.title = str(ax.get_title())
 
 		# Find and mimic all images (AxesImage)
@@ -1594,7 +1786,7 @@ class Axis(Packable):
 		# Check for missing twin axis
 		if self.y_axis_R.is_valid:
 			if twin_ax is None:
-				print(f"ERROR: Was not provided neccesary twin axis.")
+				warnings.warn("Was not provided necessary twin axis.")
 				twin_ax = ax.twinx()
 		
 		# Apply traces
@@ -1612,13 +1804,49 @@ class Axis(Packable):
 		if self.z_axis.is_valid:
 			self.z_axis.apply_to(ax, self.gs, scale_id=Scale.SCALE_ID_Z)
 		ax.grid(self.grid_on)
-		
+
+		self._apply_legend(ax, twin_ax)
+
 		local_font = self.gs.title_font.to_tuple()
 		if local_font is not None:
 			ax.set_title(self.title, fontproperties=local_font[0], size=local_font[1])
 		else:
 			ax.set_title(self.title)
-	
+
+	def _apply_legend(self, ax, twin_ax=None):
+		"""Recreate the legend, if the source figure had one.
+
+		Traces carry `include_in_legend`; matplotlib's convention is that an
+		artist is excluded by giving it a label starting with an underscore,
+		which `Trace.apply_to` already honours. So here we only need to decide
+		whether to draw a legend at all, and where.
+
+		For twinned axes both sets of handles go into a single legend on the
+		host axes -- two overlapping legends is never what the author saw.
+		"""
+
+		if not self.legend_on:
+			return
+
+		handles, labels = ax.get_legend_handles_labels()
+		if twin_ax is not None:
+			t_handles, t_labels = twin_ax.get_legend_handles_labels()
+			handles += t_handles
+			labels += t_labels
+
+		# Nothing carries a visible label -- a legend would be an empty box.
+		if not handles:
+			return
+
+		loc = self.legend_location if self.legend_location in LEGEND_LOCATIONS else "best"
+
+		local_font = self.gs.label_font.to_tuple()
+		if local_font is not None:
+			ax.legend(handles, labels, loc=loc,
+					  prop=local_font[0], fontsize=local_font[1])
+		else:
+			ax.legend(handles, labels, loc=loc)
+
 	def image_apply_to(self, ax, gstyle:GraphStyle, twin_ax=None, fig=None):
 
 		self.gs = gstyle
@@ -1672,15 +1900,18 @@ class Axis(Packable):
 		
 class MetaInfo(Packable):
 	
-	def __init__(self, description:str="", conditions:dict={}, log:plf.LogPile=None):
+	def __init__(self, description:str="", conditions:dict=None, log:plf.LogPile=None):
 		super().__init__(log)
+
+		# A mutable default would be shared by every MetaInfo ever created:
+		# conditions written into one figure would silently appear in the next.
 		
-		self.version = GRAF_VERSION
+		self.version = GRAF_FORMAT_VERSION
 		self.source_language = "Python"
 		self.source_library = "GrAF"
-		self.source_version = "0.0.0"
+		self.source_version = _library_version()
 		self.description = description
-		self.conditions = conditions
+		self.conditions = dict(conditions) if conditions else {}
 		# Provenance (see the helper block near the top of this file). These are
 		# populated/appended automatically by Graf.write_graf, never by the user.
 		self.provenance = {}   # immutable creation record (written once)
@@ -1700,7 +1931,7 @@ class Graf(Packable):
 	""" Class used to read, write and extract data from GrAF files.
 	"""
 	
-	def __init__(self, fig=None, description:str="", conditions:dict={}, log:plf.LogPile=None):
+	def __init__(self, fig=None, description:str="", conditions:dict=None, log:plf.LogPile=None):
 		super().__init__(log)
 
 		self.style = GraphStyle(log=self.log)
@@ -1725,8 +1956,6 @@ class Graf(Packable):
 	def mimic(self, fig):
 		''' Tells the Graf object to mimic the matplotlib figure as best as possible. '''
 		
-		print(self.log)
-		print(self.log.terminal_level)
 		self.log.debug(f"Mimicing figure {fig}")
 		
 		# self.style = ...
@@ -1935,7 +2164,7 @@ class Graf(Packable):
 		col_min = None
 		col_max = None
 		for axkey in self.axes.keys():
-			print(axkey, flush=True)
+			self.log.debug(f"Sizing axis {axkey}")
 			ax_size = self.axes[axkey].get_size()
 			if row_min == None:
 				row_min = ax_size[0]
@@ -2018,7 +2247,8 @@ class Graf(Packable):
 				"provenance_schema": PROVENANCE_SCHEMA,
 				"created_utc": now,
 				"created_by": _library_identity(),
-				"graf_version": GRAF_VERSION,
+				"graf_format_version": GRAF_FORMAT_VERSION,
+				"graf_library_version": _library_version(),
 				"source_language": getattr(info, "source_language", "Python"),
 				"creating_script": _creating_script(),
 			}
@@ -2052,7 +2282,7 @@ class Graf(Packable):
 
 	def write_graf(self, filename:str, *, source_app:str=None, action:str=None,
 				   source_file:str=None, source_format:str=None,
-				   include_system_info:bool=True):
+				   include_system_info:bool=True, debug_print:bool=False):
 		"""Serialize this Graf to a TOME file.
 
 		Provenance is stamped automatically here (the single write choke point):
@@ -2067,6 +2297,9 @@ class Graf(Packable):
 		  source_format       : e.g. 'touchstone_s2p', 'csv'
 		  include_system_info : stamp hostname / OS / CPU (default True); set
 		                        False to omit for privacy.
+		  debug_print         : dump the packed structure to stdout before
+		                        writing (default False). This is a debugging aid
+		                        only -- a library must not print on a normal save.
 		"""
 		# Hash the data BEFORE stamping (stamping mutates provenance/history).
 		content_hash = self._data_hash()
@@ -2075,25 +2308,84 @@ class Graf(Packable):
 							   source_format=source_format,
 							   include_system_info=include_system_info)
 		datapacket = self.pack()
-		try:
-			dict_summary(datapacket, verbose=1) #TODO: Make this a flag
-		except Exception:
-			pass
-		# dict_to_hdf(datapacket, filename, show_detail=False)
+		if debug_print:
+			try:
+				dict_summary(datapacket, verbose=1)
+			except Exception as e:
+				warnings.warn(f"Could not print GrAF structure summary: {e}")
 		dict_to_tome(datapacket, filename, show_detail=False)
-	
-	def read_graf(self, filename:str):
-		# datapacket = hdf_to_dict(filename)
-		datapacket = tome_to_dict(filename)
-		self.unpack(datapacket)
 
-def save_pklfig(figure, filename): #:matplotlib.figure.Figure, file_handle):
-	''' Writes the contents of a matplotlib figure to a pfig file. '''
-	
-	with open(filename, 'w') as fh:
-		pickle.dump(figure, fh)
+	def read_graf(self, filename:str, *, strict_version:bool=True):
+		"""Load a GrAF file into this object, replacing its current contents.
 
-def save_graf(figure, filename, description:str="", conditions:dict={},
+		The file is validated before it is trusted: it must exist, parse as a
+		TOME document, look structurally like a GrAF file, and declare a format
+		version this library can read. GrAF's whole promise is that a figure
+		opens years later on another machine -- so a file we cannot correctly
+		interpret must fail loudly rather than half-load and quietly lose data.
+
+		strict_version : raise on an incompatible format MAJOR (default). Set
+		                 False to attempt the read anyway, which may fail in
+		                 confusing ways -- for recovery work only.
+		"""
+
+		if not os.path.exists(filename):
+			raise FileNotFoundError(f"No such GrAF file: '{filename}'")
+		if not os.path.isfile(filename):
+			raise GrafFormatError(f"Not a file: '{filename}'")
+
+		if not filename.lower().endswith(GRAF_EXTENSION):
+			warnings.warn(
+				f"'{filename}' does not have a '{GRAF_EXTENSION}' extension; "
+				f"attempting to read it as a GrAF file anyway."
+			)
+
+		try:
+			datapacket = tome_to_dict(filename)
+		except Exception as e:
+			raise GrafFormatError(
+				f"'{filename}' could not be parsed as a GrAF file: {e}"
+			) from e
+
+		if not isinstance(datapacket, dict):
+			raise GrafFormatError(
+				f"'{filename}' does not contain a GrAF document "
+				f"(got {type(datapacket).__name__}, expected a mapping)."
+			)
+
+		# Structural sanity: a GrAF document always carries these top-level keys.
+		missing = [k for k in ("info", "axes", "style") if k not in datapacket]
+		if missing:
+			raise GrafFormatError(
+				f"'{filename}' is not a valid GrAF file: missing top-level "
+				f"{'key' if len(missing) == 1 else 'keys'} {', '.join(missing)}."
+			)
+
+		# Version gate, before unpacking anything.
+		file_version = None
+		if isinstance(datapacket.get("info"), dict):
+			file_version = datapacket["info"].get("version")
+
+		if file_version is None:
+			warnings.warn(
+				f"'{filename}' declares no GrAF format version; assuming "
+				f"{GRAF_FORMAT_VERSION}. It may have been written by a pre-release "
+				f"version of GrAF."
+			)
+		elif strict_version:
+			check_format_version(file_version)
+
+		try:
+			self.unpack(datapacket)
+		except GrafError:
+			raise
+		except Exception as e:
+			raise GrafFormatError(
+				f"'{filename}' parsed as a GrAF document but could not be "
+				f"interpreted: {e}"
+			) from e
+
+def save_graf(figure, filename, description:str="", conditions:dict=None,
 			  source_app:str=None, source_file:str=None, source_format:str=None,
 			  action:str=None, include_system_info:bool=True):
 	''' Writes the contents of a matplotlib figure to a GrAF file.
@@ -2107,12 +2399,9 @@ def save_graf(figure, filename, description:str="", conditions:dict={},
 						 action=action, include_system_info=include_system_info)
 
 def load_graf(filename):
-	''' Writes the contents of a matplotlib figure to a GrAF file. '''
+	''' Reads a GrAF file and returns it as a matplotlib figure. '''
 	
 	temp_graf = Graf()
 	temp_graf.read_graf(filename)
 	return temp_graf.to_fig()
 
-# def write_json_GrAF(figure, file_handle):
-# 	''' Writes the contents of a matplotlib figure to a GrAF file. '''
-# 	pass

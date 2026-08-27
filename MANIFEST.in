@@ -1,0 +1,13 @@
+# The wheel gets assets via [tool.setuptools.package-data] in pyproject.toml;
+# this file covers the sdist and the top-level docs.
+include LICENSE
+include README.md
+include todo.md
+
+recursive-include src/graf/assets *.json *.png
+recursive-include src/graf/assets/fonts *.ttf *.otf
+recursive-include src/graf/assets/fonts/LICENSES *
+
+global-exclude .DS_Store
+global-exclude *.py[cod]
+global-exclude __pycache__

@@ -1,22 +1,28 @@
 #!/usr/bin/env python
 
 import argparse
+import os
 from pylogfile.base import *
 from graf.base import *
 
-parser = argparse.ArgumentParser()
-parser.add_argument('filenames', nargs="+", help="Filenames to view")
-parser.add_argument('--sanserif', help="Force use of SanSerif font family.", action='store_true')
-parser.add_argument('--serif', help="Force use of Serif font family.", action='store_true')
-parser.add_argument('--mono', help="Force use of Monospace font family.", action='store_true')
-parser.add_argument('--bold', help="Force use of bold fonts.", action='store_true')
-parser.add_argument('--italic', help="Force use of italic fonts.", action='store_true')
-parser.add_argument('-s', '--struct', help="Show internal strucutre of GrAF file.", action='store_true')
-parser.add_argument('-S', '--structure', help="Show internal strucutre of GrAF file, with verbose options.", action='store_true')
-args = parser.parse_args()
+def build_parser():
+	parser = argparse.ArgumentParser(
+		prog="graf-viewer",
+		description="View GrAF (.graf) figures and optionally restyle them.")
+	parser.add_argument('filenames', nargs="+", help="GrAF files to view")
+	parser.add_argument('--sanserif', help="Force use of SanSerif font family.", action='store_true')
+	parser.add_argument('--serif', help="Force use of Serif font family.", action='store_true')
+	parser.add_argument('--mono', help="Force use of Monospace font family.", action='store_true')
+	parser.add_argument('--bold', help="Force use of bold fonts.", action='store_true')
+	parser.add_argument('--italic', help="Force use of italic fonts.", action='store_true')
+	parser.add_argument('-s', '--struct', help="Show internal structure of GrAF file.", action='store_true')
+	parser.add_argument('-S', '--structure', help="Show internal structure of GrAF file, verbosely.", action='store_true')
+	return parser
 
-def main():
-	
+
+def main(argv=None):
+
+	args = build_parser().parse_args(argv)
 	log = LogPile()
 	
 	graphs = []
@@ -26,25 +32,23 @@ def main():
 	for filename in args.filenames:
 	# filename = args.filename
 	
-		len_gt5 = len(filename) > 5
-		len_gt7 = len(filename) > 7
-		
-		# Read file
-		if len_gt5 and filename[-5:].upper() == ".GRAF":
-			graf1 = Graf()
+		# GrAF is the only format this tool reads or writes.
+		if not filename.upper().endswith(".GRAF"):
+			print(f"Skipping '{filename}': not a GrAF file (expected a .graf extension).")
+			continue
+
+		if not os.path.isfile(filename):
+			print(f"Skipping '{filename}': file not found.")
+			continue
+
+		graf1 = Graf()
+		try:
 			graf1.read_graf(filename)
-		elif len_gt5 and filename[-5:].upper() == ".JSON":
-			print(f"JSON")
-			# if not log.read_graf(filename):
-			# 	print("\tFailed to read JSON file.")
-			pass
-		elif len_gt7 and filename[-7:].upper() == ".PKLFIG":
-			print(f"PklFig")
-			pass
-		else:
-			print(f"Other")
-		
-		# Print strucutre if requested
+		except Exception as e:
+			print(f"Skipping '{filename}': could not be read as a GrAF file ({e}).")
+			continue
+
+		# Print structure if requested
 		if args.structure:
 			dict_summary(graf1.pack(), verbose=2)
 		elif args.struct:
@@ -52,22 +56,17 @@ def main():
 		
 		# Apply styling
 		if args.serif:
-			print("Setting to serif")
 			graf1.style.set_all_font_families("serif")
 		elif args.sanserif:
-			print("Setting to sanserif")
 			graf1.style.set_all_font_families("sanserif")
 		elif args.mono:
-			print("Setting to monospace")
 			graf1.style.set_all_font_families("monospace")
 		
 		if args.italic:
-			# print("Setting to serif")
 			graf1.style.title_font.italic = True
 			graf1.style.graph_font.italic = True
 			graf1.style.label_font.italic = True
 		if args.bold:
-			# print("Setting to sanserif")
 			graf1.style.title_font.bold = True
 			graf1.style.graph_font.bold = True
 			graf1.style.label_font.bold = True

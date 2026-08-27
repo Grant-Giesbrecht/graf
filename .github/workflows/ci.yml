@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+
+      - name: Run test suite
+        env:
+          MPLBACKEND: Agg
+          QT_QPA_PLATFORM: offscreen
+        run: pytest tests/ -v --cov=graf --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  # The packaging job is the point of this workflow, not an afterthought.
+  # GrAF ships font and icon assets that the library loads AT IMPORT TIME, and a
+  # misconfigured package-data table once produced a wheel that installed fine
+  # and then died on `import graf`. Testing the source tree cannot catch that --
+  # only installing the built artifact into a clean environment can.
+  package:
+    name: Build and verify distributions
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Check distribution metadata
+        run: twine check dist/*
+
+      - name: Assert assets are present in the wheel
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+
+          wheel = glob.glob('dist/*.whl')[0]
+          names = zipfile.ZipFile(wheel).namelist()
+
+          required = [
+              'graf/assets/portable_fonts.json',
+              'graf/assets/fonts/SUSE-Regular.ttf',
+              'graf/assets/fonts/SUSE-Bold.ttf',
+              'graf/assets/fonts/MFBOldstyle-Regular.otf',
+              'graf/assets/fonts/SplineSansMono-Regular.ttf',
+              'graf/assets/fonts/LICENSES/OFL-SUSE.txt',
+              'graf/assets/fonts/LICENSES/OFL-SplineSansMono.txt',
+              'graf/assets/fonts/LICENSES/CC0-MFBOldstyle.txt',
+          ]
+          missing = [r for r in required if r not in names]
+          if missing:
+              print('MISSING FROM WHEEL:', *missing, sep='\n  ')
+              sys.exit(1)
+          print(f'All {len(required)} required assets present in {wheel}')
+          PY
+
+      - name: Install the wheel into a clean environment and import it
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --upgrade pip
+          /tmp/smoke/bin/pip install dist/*.whl
+          MPLBACKEND=Agg /tmp/smoke/bin/python - <<'PY'
+          import io, contextlib, os, tempfile
+          import matplotlib
+          matplotlib.use('Agg')
+
+          # Import and a full save/load cycle must be completely silent: a
+          # library that prints on every save is unusable inside other tools.
+          out, err = io.StringIO(), io.StringIO()
+          with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+              import graf
+              import matplotlib.pyplot as plt
+
+              path = os.path.join(tempfile.mkdtemp(), 'smoke.graf')
+              fig, ax = plt.subplots()
+              ax.plot([1, 2, 3], [4, 5, 6], label='smoke')
+              ax.legend()
+              graf.save_graf(fig, path)
+              fig2 = graf.load_graf(path)
+
+          assert fig2.axes[0].get_legend() is not None, 'legend lost on reload'
+          assert out.getvalue() == '', f'library printed to stdout: {out.getvalue()[:200]!r}'
+
+          # Every bundled font must resolve from the installed wheel.
+          for family in graf.base.font_data['font-list']:
+              assert family['font-regular'] is not None, family['names'][0]
+
+          print('smoke test passed:', graf.__version__,
+                '| format', graf.GRAF_FORMAT_VERSION)
+          PY

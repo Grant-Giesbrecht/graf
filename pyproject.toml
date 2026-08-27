@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graf-format"
-version = "0.0.0.dev4"
+version = "0.1.0.dev0"
 authors = [
   { name="Grant Giesbrecht", email="grant.giesbrecht@colorado.edu" },
 ]
@@ -17,13 +17,21 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-	'h5py >= 3.11.0',
 	'matplotlib >= 3.9.0',
-	'stardust-tools >= 0.0.0',
+	'numpy >= 1.24.0',
+	'stardust-tools >= 0.1.0',
+	'pylogfile >= 0.5.0',
+	'colorama >= 0.4.6',
 	'PyQt6 >= 6.4.0',
 	'mplcursors >= 0.7'
 ]
 
+
+[project.optional-dependencies]
+test = [
+	'pytest >= 7.0',
+	'pytest-cov >= 4.0',
+]
 
 [project.urls]
 Homepage = "https://github.com/Grant-Giesbrecht/graf"
@@ -31,12 +39,41 @@ Issues = "https://github.com/Grant-Giesbrecht/graf/issues"
 
 [project.scripts]
 graf-viewer = "graf.scripts.grafviewer:main"
-graf-script = "graf.scripts.grafscript:main"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Keys here are PACKAGE names. The previous table used arbitrary labels
+# ("portable_fonts", "font_suse_reg", ...), which setuptools silently ignored --
+# the built wheel shipped no assets at all and `import graf` died on the
+# module-level load_fonts() call. Everything under assets/ ships with the
+# package; the fonts carry their own licence texts alongside them.
 [tool.setuptools.package-data]
-portable_fonts = ["graf.assets.portable_fonts.json"]
-font_suse_reg = ["graf.assets.fonts.SUSE-Regular.ttf"]
-font_suse_bold = ["graf.assets.fonts.SUSE-Bold.ttf"]
-font_mfb_reg = ["graf.assets.fonts.MFBOldstyle-Regular.otf"]
-font_mfb_bold = ["graf.assets.fonts.MFBOldstyle-Bold.otf"]
-font_mfb_italic = ["graf.assets.fonts.MFBOldstyle-Italic.otf"]
+"graf" = [
+	"assets/*.json",
+	"assets/*.png",
+	"assets/fonts/*.ttf",
+	"assets/fonts/*.otf",
+	"assets/fonts/LICENSES/*",
+]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The headless Agg backend is selected in tests/conftest.py, which must run
+# before any other matplotlib import.
+filterwarnings = [
+	# GrAF's own warnings are part of its contract -- never let them pass silently.
+	"always::UserWarning",
+]
+
+[tool.coverage.run]
+source = ["graf"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+	"pragma: no cover",
+	"if __name__ == .__main__.:",
+	"raise NotImplementedError",
+]
