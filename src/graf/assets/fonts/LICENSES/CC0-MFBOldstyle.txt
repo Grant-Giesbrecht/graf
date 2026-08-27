@@ -1,0 +1,18 @@
+MFB Oldstyle
+
+Applies to the font files in this directory:
+    MFBOldstyle-Regular.otf
+    MFBOldstyle-Bold.otf
+    MFBOldstyle-Italic.otf
+
+These font files declare, in their embedded `name` table (licence-URL entry),
+release under the Creative Commons CC0 1.0 Universal Public Domain Dedication:
+
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+CC0 places the work in the public domain to the fullest extent permitted by
+law. There is no attribution requirement and no obligation to reproduce a
+licence text; this file is recorded for provenance so that anyone auditing
+GrAF's redistributed assets can see the basis on which each font ships.
+
+The full CC0 1.0 legal text is available at the URL above.
