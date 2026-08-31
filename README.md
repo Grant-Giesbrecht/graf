@@ -73,21 +73,33 @@ details.
 pip install graf-format
 ```
 
-Python 3.10+. Reading and writing `.graf` files needs nothing else.
+Python 3.10+. That is everything needed to read and write `.graf` files. The
+package is `graf-format` on PyPI and imports as `graf`.
 
-The interactive viewer (`graf-viewer`, `graf.widgets.rich_show`) is built on Qt,
-which is a large download, so it is an optional extra:
+### Optional extras
 
-```bash
-pip install 'graf-format[gui]'
-```
+| Extra | Install | Adds | Cost |
+|---|---|---|---|
+| `gui` | `pip install 'graf-format[gui]'` | PyQt6 + mplcursors — the `graf-viewer` command and `rich_show()` | **+235 MB** |
+| `test` | `pip install 'graf-format[test]'` | pytest + pytest-cov, for running the suite | ~10 MB |
+| `dev` | `pip install 'graf-format[dev]'` | Both of the above | +235 MB |
 
-Commands installed with the library:
+Quote the name in zsh (macOS default), which treats `[...]` as a glob.
+
+The viewer is optional because Qt is **235 MB** — larger than GrAF and all its
+other dependencies combined (~149 MB). Nothing in the save/load path touches it:
+`import graf` never imports PyQt6, and a base install saves, loads and upgrades
+files perfectly well. Only `import graf.widgets` needs it, and it says so
+clearly if the extra is missing.
+
+### Commands
 
 ```bash
 graf-upgrade -r ./figures                 # rewrite old files in the current format
-graf-viewer figure1.graf --serif --bold   # open and restyle  (needs [gui])
+graf-viewer figure1.graf --serif --bold   # open and restyle        (needs [gui])
 ```
+
+Full details in the [installation guide](https://graf.readthedocs.io/en/latest/installation.html).
 
 GrAF reads files written by older versions without any conversion — fields added
 since simply take their defaults, and `Graf.unpack_report` says which. Upgrading

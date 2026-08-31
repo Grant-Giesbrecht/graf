@@ -1,3 +1,8 @@
+# This demo uses GrAF's interactive viewer, which ships in the optional 'gui'
+# extra (Qt is a large download, and the save/load path does not need it):
+#
+#     pip install 'graf-format[gui]'
+#
 import matplotlib.pyplot as plt
 
 import graf.widgets as gw

@@ -34,21 +34,14 @@ Installation
 
     pip install graf-format
 
-Python 3.10+. Reading and writing ``.graf`` files needs nothing else.
-
-The interactive viewer (``graf-viewer``, :func:`graf.widgets.rich_show`) is
-built on Qt, which is a large download, so it is an optional extra:
+Python 3.10+. Reading and writing ``.graf`` files needs nothing else. The
+interactive viewer is an optional extra, since Qt is a large download:
 
 .. code-block:: bash
 
     pip install 'graf-format[gui]'
 
-Commands installed with the library:
-
-.. code-block:: bash
-
-    graf-upgrade -r ./figures                 # rewrite old files in the current format
-    graf-viewer figure1.graf --serif --bold   # open and restyle  (needs [gui])
+See :doc:`installation` for what each extra contains.
 
 Documentation
 =============
@@ -57,6 +50,7 @@ Documentation
     :maxdepth: 2
     :caption: Using GrAF
 
+    installation
     tutorials/index
 
 .. toctree::

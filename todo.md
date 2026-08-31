@@ -319,6 +319,12 @@ The gaps below are what stands between that and a release-quality suite.
 - [x] `[dev]` extra added for contributors who want everything.
 - [x] Docs verified to build in a PyQt6-free environment, matching what Read the
       Docs now gets — `autodoc_mock_imports` covers the viewer module.
+- [x] **Installation documented** — new `docs/source/installation.md` page
+      (what each extra installs, why the viewer is separate, the base
+      dependency table, how to check an install), with a matching summary table
+      in the README. Every figure in it was measured, not estimated.
+- [x] `examples/rich_plt_show_demo.py` annotated with the `[gui]` requirement,
+      since it is the one example that no longer runs on a base install.
 
 ## 3. Project hygiene
 
