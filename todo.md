@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
-**Current state:** 532 tests passing (was 209), plus 178 in stardust. All six release blockers fixed
+**Current state:** 540 tests passing (was 209), plus 178 in stardust. All six release blockers fixed
 and verified against a clean-venv install of the built wheel. Version is
 `0.1.0.dev0`; format version `1.0`. Remaining work is documentation and the two
 untested GUI modules.
@@ -299,6 +299,26 @@ The gaps below are what stands between that and a release-quality suite.
 - [x] **Docs build added to CI**, with `-W` (warnings as errors) plus a check
       that the API pages are not empty — which is exactly how the previous stub
       escaped notice.
+
+### Packaging: GUI made optional
+
+- [x] **PyQt6 + mplcursors moved to a `gui` extra.** Base install is **235 MB
+      smaller** (149 MB vs 384 MB) — Qt was larger than everything else
+      combined, and nothing in the save/load path touches it. Verified: a base
+      install saves, loads, preserves legends and runs `graf-upgrade` with no
+      GUI packages present.
+- [x] **Both failure modes give actionable errors.** `graf.widgets` raises an
+      ImportError naming `pip install 'graf-format[gui]'`, and `graf-viewer`
+      detects a headless matplotlib *before* calling `plt.show()` — which
+      previously returned silently and displayed nothing, reading as a broken
+      viewer rather than a missing extra.
+- [x] **Boundary pinned by tests** (`tests/test_optional_gui.py`, 8 tests):
+      `import graf` is run in a subprocess and asserted never to pull PyQt6 into
+      `sys.modules`. CI's main job now installs *without* the extra and asserts
+      the GUI packages are absent; a separate `gui` job covers the viewer.
+- [x] `[dev]` extra added for contributors who want everything.
+- [x] Docs verified to build in a PyQt6-free environment, matching what Read the
+      Docs now gets — `autodoc_mock_imports` covers the viewer module.
 
 ## 3. Project hygiene
 

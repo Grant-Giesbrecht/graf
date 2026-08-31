@@ -34,12 +34,21 @@ Installation
 
     pip install graf-format
 
-Python 3.10+. Two commands are installed alongside the library:
+Python 3.10+. Reading and writing ``.graf`` files needs nothing else.
+
+The interactive viewer (``graf-viewer``, :func:`graf.widgets.rich_show`) is
+built on Qt, which is a large download, so it is an optional extra:
 
 .. code-block:: bash
 
-    graf-viewer figure1.graf --serif --bold   # open and restyle from the shell
+    pip install 'graf-format[gui]'
+
+Commands installed with the library:
+
+.. code-block:: bash
+
     graf-upgrade -r ./figures                 # rewrite old files in the current format
+    graf-viewer figure1.graf --serif --bold   # open and restyle  (needs [gui])
 
 Documentation
 =============

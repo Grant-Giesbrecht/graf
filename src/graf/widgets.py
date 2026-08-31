@@ -31,14 +31,28 @@ and the taskbar/dock are configurable module-wide:
 
 import os
 import sys
-from mplcursors import cursor
 
-from PyQt6.QtWidgets import (
-	QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
-	QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog, QMessageBox, QComboBox,
-)
-from PyQt6.QtCore import QSettings
-from PyQt6.QtGui import QIcon, QAction, QActionGroup, QKeySequence
+# PyQt6 and mplcursors are OPTIONAL dependencies -- they ship with the 'gui'
+# extra, not the base install, because nothing in GrAF's save/load path needs a
+# GUI toolkit. Only this module does. The bare ImportError names a module the
+# user never asked for, so it is translated into an instruction they can act on.
+try:
+	from mplcursors import cursor
+
+	from PyQt6.QtWidgets import (
+		QApplication, QMainWindow, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
+		QLabel, QLineEdit, QCheckBox, QPushButton, QFileDialog, QMessageBox, QComboBox,
+	)
+	from PyQt6.QtCore import QSettings
+	from PyQt6.QtGui import QIcon, QAction, QActionGroup, QKeySequence
+except ImportError as e:
+	raise ImportError(
+		f"GrAF's interactive viewer needs the optional GUI dependencies, which "
+		f"are not installed ({e.name} is missing).\n\n"
+		f"    pip install 'graf-format[gui]'\n\n"
+		f"Reading and writing .graf files does not require them; only "
+		f"graf.widgets, rich_show() and the graf-viewer command do."
+	) from e
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure

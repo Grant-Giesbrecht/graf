@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import sys
 from pylogfile.base import *
 from graf.base import *
 
@@ -20,9 +21,36 @@ def build_parser():
 	return parser
 
 
+def _require_gui():
+	"""Fail clearly if no GUI backend is available.
+
+	plt.show() on a headless matplotlib does not raise -- it returns silently
+	and displays nothing, which looks like the viewer is broken rather than
+	uninstalled. Checking up front turns that into an actionable message.
+	"""
+
+	import matplotlib
+
+	if matplotlib.get_backend().lower() in ("agg", "template"):
+		print(
+			"graf-viewer needs a GUI backend, but matplotlib is running headless "
+			f"(backend: {matplotlib.get_backend()}).\n\n"
+			"    pip install 'graf-format[gui]'\n\n"
+			"Reading and writing .graf files does not require this; only the "
+			"viewer does.",
+			file=sys.stderr,
+		)
+		return False
+	return True
+
+
 def main(argv=None):
 
 	args = build_parser().parse_args(argv)
+
+	if not _require_gui():
+		return 1
+
 	log = LogPile()
 	
 	graphs = []
@@ -86,6 +114,7 @@ def main(argv=None):
 	
 	
 	plt.show()
+	return 0
 
 if __name__ == "__main__":
-	main()
+	sys.exit(main())

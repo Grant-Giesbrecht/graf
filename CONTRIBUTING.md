@@ -10,10 +10,25 @@ touches the file format.
 git clone https://github.com/Grant-Giesbrecht/graf
 cd graf
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[test]"
+pip install -e ".[dev]"          # everything, including the Qt viewer
 ```
 
 GrAF requires Python 3.10+.
+
+`[dev]` pulls in both extras. If you are not touching the viewer, `pip install
+-e ".[test]"` is enough and skips a 235 MB Qt download.
+
+### The GUI dependencies are optional
+
+PyQt6 and mplcursors ship in the `gui` extra, not the base install — nothing in
+the save/load path needs a GUI toolkit, and Qt is larger than everything else
+combined. **`graf.base` and `graf/__init__.py` must never import `graf.widgets`,
+directly or transitively.** `tests/test_optional_gui.py` enforces this by
+importing `graf` in a subprocess and asserting PyQt6 never lands in
+`sys.modules`; CI's main job installs without the extra for the same reason.
+
+If you add a feature that needs Qt, it belongs in `graf.widgets` behind that
+boundary.
 
 ## Running the tests
 

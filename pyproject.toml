@@ -22,15 +22,27 @@ dependencies = [
 	'stardust-tools >= 0.2.0',
 	'pylogfile >= 0.5.0',
 	'colorama >= 0.4.6',
+]
+
+# The Qt viewer (graf.widgets, graf-viewer, rich_show) is optional. PyQt6 is a
+# large download and nothing in the core save/load path touches it -- `import
+# graf` never imports PyQt6, only `import graf.widgets` does. Keeping it out of
+# the base install means users who only read and write files do not pay for a
+# GUI toolkit they never start.
+[project.optional-dependencies]
+gui = [
 	'PyQt6 >= 6.4.0',
-	'mplcursors >= 0.7'
+	'mplcursors >= 0.7',
 ]
 
 
-[project.optional-dependencies]
 test = [
 	'pytest >= 7.0',
 	'pytest-cov >= 4.0',
+]
+# Everything needed to run the full suite, including the GUI tests.
+dev = [
+	'graf-format[gui,test]',
 ]
 
 [project.urls]

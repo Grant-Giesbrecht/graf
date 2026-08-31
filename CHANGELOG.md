@@ -85,6 +85,23 @@ file committed at `tests/data/`.
   implemented and has been removed; `grafviewer` no longer parses `sys.argv` at
   import time, and no longer raises `NameError` when handed a non-GrAF filename.
 
+### Changed — packaging
+
+- **PyQt6 and mplcursors are now an optional `gui` extra**, not required
+  dependencies. Nothing in the save/load path uses them; only `graf.widgets`,
+  `rich_show()` and `graf-viewer` do. A base install is **235 MB smaller** (149
+  MB vs 384 MB).
+
+  ```bash
+  pip install graf-format          # read and write .graf files
+  pip install 'graf-format[gui]'   # ...plus the interactive viewer
+  ```
+
+  **If you use `rich_show()` or `graf-viewer`, install the extra.** Both now
+  fail with a message naming it rather than a bare `ModuleNotFoundError`, and
+  `graf-viewer` detects a headless matplotlib up front instead of calling
+  `plt.show()` and silently displaying nothing.
+
 ### Added
 
 - **File validation on read.** `read_graf` now checks that the file exists,
