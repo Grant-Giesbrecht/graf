@@ -1,11 +1,15 @@
-# GrAF — road to v0.1.0
+# GrAF — release notes and backlog
 
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
-**Current state:** 540 tests passing (was 209), plus 178 in stardust. All six release blockers fixed
-and verified against a clean-venv install of the built wheel. Version is
-`0.1.0.dev0`; format version `1.0`. Remaining work is documentation and the two
-untested GUI modules.
+## v0.1.0 — RELEASED 2026-08-31
+
+Published to PyPI. File format **1.0**, library **0.1.0**, 540 tests, CI green
+across 12 platform/version combinations (Linux/macOS/Windows x Python
+3.10-3.13), docs live on Read the Docs.
+
+Everything under §1-§3 below is the work that got there, kept as a record.
+**New work goes in "Backlog after v0.1.0" at the end of this file.**
 
 ---
 
@@ -202,17 +206,11 @@ take effect. Redesigned on CSS's model, in a new `graf/fonts.py`:
 
 ### Still open
 
-- [ ] **`GraphStyle` is figure-global, matplotlib is per-artist.** One axes has
-      to speak for the whole figure, so a multi-subplot figure with genuinely
-      different typography per subplot collapses to one style. Fine for the
-      common case; a real limitation to document in the format spec, or to fix
-      by moving font slots onto `Axis`.
-- [ ] Tick-label *family* on log scales is best-effort only — matplotlib's
-      locator regenerates those Text artists on every draw. Size survives via
-      `tick_params`; family may not.
-- [ ] Decide whether to ship a separate `graf-fonts` distribution for users who
-      want more bundled families, rather than growing the core wheel (~700 KB of
-      fonts today).
+- [~] **`GraphStyle` is figure-global, matplotlib is per-artist.** Carried
+      forward — see *Known limitations shipped in 0.1.0*.
+- [~] Tick-label *family* on log scales is best-effort. Carried forward — see
+      *Deferred decisions*.
+- [~] `graf-fonts` distribution — carried forward, see *Deferred decisions*.
 
 ## 2. Test suite gaps
 
@@ -257,8 +255,9 @@ The gaps below are what stands between that and a release-quality suite.
 - [x] Corrupt / missing / wrong-version file handling tested (49 tests in
       `tests/test_format_validation.py`), including a `TestQuiet` class pinning
       the "library must not print" contract so it cannot regress.
-- [ ] No tests: `widgets.py` (881 lines, Qt viewer + `rich_show`) — 0 %.
-- [ ] No tests: `scripts/grafviewer.py` — 0 %.
+- [~] `widgets.py` and `scripts/grafviewer.py` remain largely untested (1 % and
+      31 % at release). Carried forward — see *Known limitations shipped in
+      0.1.0*.
 - [x] Coverage tooling added (`pytest-cov`, `[project.optional-dependencies]
       test`, `[tool.coverage.*]`). It is now a number, not an estimate:
 
@@ -418,9 +417,8 @@ user-facing bug that every local run had hidden.
       `.gitignore` now covers `*.graf` / `*.GrAF` with a negation preserving the
       committed legacy fixture.
 - [~] `TODO:` comments in `base.py`: the three font ones and the
-      `dict_summary` flag are resolved. Remaining: line/marker error-checking in
-      `Trace.mimic_2dline` / `mimic_errorbar`, the two "normalize these to one
-      somehow" notes, subplot bounds in `Graf.mimic`, and twin-axis iteration.
+      `dict_summary` flag are resolved. The rest are carried forward — see
+      *Code cleanup*.
 
 ## 4. Font licensing (needs a decision — see §Fonts below)
 
@@ -457,3 +455,74 @@ gap, not the redistribution right itself.
       dangling `graf-script` console-script entry point from `pyproject.toml`,
       which would have installed a command that raised `ModuleNotFoundError`.
 - [x] Add `MANIFEST.in` so the sdist carries assets and licences too.
+
+---
+
+# Backlog after v0.1.0
+
+## Known limitations shipped in 0.1.0
+
+These were understood and accepted at release, not overlooked. Listed here so
+the decision is on the record rather than rediscovered later.
+
+- [ ] **`widgets.py` is at 1% coverage** (457 statements), `grafviewer.py` at
+      31%. The Qt viewer could be broken in ways nothing would catch. Mitigated
+      by the GUI being an optional extra since 0.1.0, which limits the blast
+      radius to people who explicitly asked for it — but it is the largest
+      untested surface in the project. Testing Qt properly is its own project;
+      `pytest-qt` is the obvious starting point.
+- [ ] **3-D surface support depends on matplotlib private attributes.**
+      `_poly3d_vertices` handles all three known layouts (`_faces` >= 3.11,
+      `_vec` 3.9-3.10, `_segments3d` < 3.9), but matplotlib has moved this three
+      times already and may again. There is no public accessor to migrate to.
+      The CI matrix is the early-warning system; keep it running against the
+      latest matplotlib. This is exactly the bug the first CI run caught, and it
+      would have shipped broken otherwise.
+- [ ] **`GraphStyle` is figure-global while matplotlib is per-artist.** One axes
+      speaks for the whole figure, so a multi-subplot figure with genuinely
+      different typography per subplot collapses to a single style. Fixing it
+      means moving the font slots onto `Axis`, which is a **format change** —
+      additive, so a 1.1 MINOR bump, and now cheap since stardust 0.2.0 makes
+      missing fields default rather than fail.
+
+## Deferred decisions
+
+- [ ] **`graf-fonts` distribution?** Whether to ship additional bundled font
+      families separately rather than growing the core wheel. Less pressing
+      since 0.1.0 resolves system and user-configured fonts, so most people can
+      use the typefaces they already have via `graf.add_font_path()`.
+- [ ] **Tick-label *family* on log scales is best-effort.** matplotlib's locator
+      regenerates those Text artists on every draw and discards per-artist
+      styling. Size survives via `tick_params`. Documented in
+      `Scale._apply_tick_font`.
+- [ ] **matplotlib floor is `>= 3.9`**, which now spans two incompatible private
+      APIs for 3-D surfaces. Raising it to `>= 3.10` would reduce the exposure
+      at the cost of excluding 3.9 users. Left as-is because the code handles
+      all three layouts.
+
+## Code cleanup
+
+- [ ] Remaining `TODO:` comments in `base.py`: line/marker error-checking in
+      `Trace.mimic_2dline` and `mimic_errorbar`, the two "normalize these to one
+      somehow" notes, subplot bounds in `Graf.mimic`, and twin-axis iteration.
+- [ ] `AXISTYPE_LINE` / `AXISTYPE_SURFACE` / `AXISTYPE_IMAGE` module constants
+      duplicate `Axis.AXIS_LINE2D` etc. (flagged by an existing `# TODO: Merge
+      these` comment).
+- [ ] The `_verify_load` guard in `Graf.read_graf` predates the stardust 0.2.0
+      fix. It is cheap defence in depth and worth keeping, but the comment
+      explaining *why* should stay accurate if stardust's behaviour changes
+      again.
+
+## Process notes for next time
+
+- The CI matrix earned its cost immediately: it caught the matplotlib 3.11
+  breakage that every local run had hidden, because the dev environment had
+  matplotlib 3.10.8 pinned while a fresh install resolves 3.11. **Do not trust a
+  green local suite as evidence about a fresh install.**
+- Read the Docs fails *silently*: a failed build leaves the previous one
+  published, so new pages 404 while the dashboard shows a recent build. The docs
+  CI job now builds without system pandoc specifically to keep the fallback
+  honest, and asserts every expected page exists.
+- Format changes are locked by `tests/test_format_schema.py`. A failure there is
+  the mechanism working, not an obstacle — follow the procedure in `FORMAT.md`
+  rather than updating the expected values.
