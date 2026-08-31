@@ -28,7 +28,7 @@ The file on disk is never modified by reading it.
 The new **`graf-upgrade`** command rewrites files in the current format,
 recording those defaults explicitly. It writes a `.bak` beside each file, is
 idempotent, appends an entry to the file's history, and leaves the immutable
-creation record alone. See [FORMAT.md §11](FORMAT.md).
+creation record alone. See section 11 of the format specification (`FORMAT.md`).
 
 | Object | Change |
 |---|---|
@@ -40,7 +40,7 @@ creation record alone. See [FORMAT.md §11](FORMAT.md).
 | `MetaInfo` | `version` now means the *format* version (was a library version); `source_version` now records the writing library |
 | provenance | `graf_version` split into `graf_format_version` and `graf_library_version` |
 
-The format is now specified in [FORMAT.md](FORMAT.md), and
+The format is now specified in `FORMAT.md`, and
 `tests/test_format_schema.py` locks the field list so no future change to it can
 happen as a side effect of an ordinary refactor.
 

@@ -1,8 +1,12 @@
-# Defining the exact version will make sure things don't break
+# Docs are built against the source tree (see the '.' entry below), never
+# against the last release on PyPI -- otherwise the API reference documents a
+# different version than the one in the repository.
 sphinx>=7.0.0
 myst-parser>=3.0.0
 sphinx-rtd-theme>=1.3.0
 nbsphinx>=0.9.5
-ipykernel 
-sphinxcontrib-napoleon
-graf-format
+ipykernel
+
+# The package itself, from the repository root, so autodoc imports the code
+# being documented.
+.

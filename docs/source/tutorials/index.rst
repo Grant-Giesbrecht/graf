@@ -9,3 +9,4 @@ Here are some tutorials to get you started off on the right foot!
     :maxdepth: 2
 
     Introduction
+    How_it_works

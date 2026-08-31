@@ -126,3 +126,49 @@ jobs:
           print('smoke test passed:', graf.__version__,
                 '| format', graf.GRAF_FORMAT_VERSION)
           PY
+
+  # The docs build was silently broken before this job existed: the API
+  # reference page was an empty stub, and nbsphinx needs pandoc, which the Read
+  # the Docs image does not carry by default.
+  docs:
+    name: Build documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
+      - name: Install docs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt
+
+      - name: Build docs, failing on any warning
+        env:
+          MPLBACKEND: Agg
+        run: sphinx-build -b html -W --keep-going docs/source docs/_build
+
+      - name: Check the API reference is not empty
+        run: |
+          python - <<'PY'
+          import re, sys
+
+          pages = {
+              'docs/_build/api/base.html': 20,
+              'docs/_build/api/fonts.html': 10,
+              'docs/_build/api/graf.html': 5,
+          }
+          for path, minimum in pages.items():
+              html = open(path).read()
+              found = len(set(re.findall(r'id="(graf\.[\w.]+)"', html)))
+              print(f'{path}: {found} documented objects (need >= {minimum})')
+              if found < minimum:
+                  sys.exit(f'{path} documents too little - autodoc is not picking up the API')
+          PY

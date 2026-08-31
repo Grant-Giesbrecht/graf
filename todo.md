@@ -273,6 +273,33 @@ The gaps below are what stands between that and a release-quality suite.
       Suite is **339 tests** (was 209). The remaining total is dominated by the
       two GUI modules; `base.py` is the library proper.
 
+### Docs defects found and fixed
+
+- [x] **The Read the Docs build was broken.** nbsphinx shells out to `pandoc`,
+      which the RTD image does not include and `.readthedocs.yaml` did not
+      declare. Added via `build.apt_packages`.
+- [x] **Docs were built against the last PyPI release, not the source tree.**
+      `docs/requirements.txt` listed `graf-format`, so the API reference would
+      have documented `0.0.0.dev4` rather than the working tree. Now installs
+      `.` from the repository root.
+- [x] **`conf.py` hardcoded `release = '0.0.0'`** — now read from installed
+      package metadata, so the docs cannot claim a different version than the
+      code. Also added autosummary, viewcode, intersphinx and myst-parser,
+      mocked `PyQt6`/`mplcursors` for headless builds, and set
+      `nbsphinx_allow_errors = False` so a tutorial that stops working fails
+      the build instead of publishing broken output.
+- [x] **`How_it_works.ipynb` was an unfinished stub** duplicating
+      `Introduction.ipynb` code cell for code cell, with a placeholder outline
+      as its only original content — and it was orphaned from every toctree.
+      Rewritten as a real tutorial on file structure (the `Ax0`/`Tr0` naming,
+      subplot position/span, the four scales, twin axes) and added to the
+      toctree. All code cells verified to run.
+- [x] `Introduction.ipynb` updated from `from graf.base import *` to the public
+      `import graf` API.
+- [x] **Docs build added to CI**, with `-W` (warnings as errors) plus a check
+      that the API pages are not empty — which is exactly how the previous stub
+      escaped notice.
+
 ## 3. Project hygiene
 
 - [x] **CI added** — `.github/workflows/ci.yml`. Two jobs:
@@ -286,9 +313,11 @@ The gaps below are what stands between that and a release-quality suite.
       replaced with a working example, a comparison table against
       PNG/SVG/pickle/MATLAB, and sections on provenance, installation and
       fonts. It is the PyPI long description, so this is the shop window.
-- [ ] **`docs/source/modules.rst` is an empty stub** — a `toctree` with no
-      entries. There is no API reference at all despite Read the Docs being
-      wired up.
+- [x] **API reference written.** `modules.rst` (an empty `toctree` producing a
+      page with 0 classes and 0 functions) replaced by `docs/source/api/` —
+      `graf` (the public convenience API), `base` (the file model, 71 documented
+      objects), and `fonts` (22). `FORMAT.md` and `CHANGELOG.md` are now
+      included in the docs site via MyST.
 - [x] **Format specification written** — `FORMAT.md`, defining every field,
       the versioning rules, the enumerated values, and what GrAF does and does
       not promise. Carries a version history table.
@@ -299,7 +328,9 @@ The gaps below are what stands between that and a release-quality suite.
       side effect of a refactor.
 - [x] `CHANGELOG.md` added, written against `0.0.0.dev4` since nothing before
       this was a supported release.
-- [ ] Add CONTRIBUTING.
+- [x] `CONTRIBUTING.md` added — setup, tests, the format-change procedure, the
+      docs build (including the pandoc requirement), the tabs-in-src /
+      spaces-in-tests convention, and the font licence checklist.
 - [x] **`src/graf/__init__.py`** now exports the public API (`import graf;
       graf.save_graf(...)`) plus `__version__`, with `__all__` pinned by a test
       so the surface is a deliberate promise rather than an accident.
@@ -309,9 +340,10 @@ The gaps below are what stands between that and a release-quality suite.
 - [x] **Mutable default arguments** fixed in all three places, with tests: the
       shared `{}` meant conditions written into one figure could silently appear
       in the next one created. Supplied dicts are now copied too.
-- [~] **Tracked junk**: `.DS_Store` untracked and deleted. Still to do:
-      committed `.graf` outputs under `examples/` and
-      `docs/source/tutorials/`.
+- [x] **Tracked junk cleared**: `.DS_Store` and the six committed `.graf`
+      outputs under `examples/` and `docs/source/tutorials/` are untracked;
+      `.gitignore` now covers `*.graf` / `*.GrAF` with a negation preserving the
+      committed legacy fixture.
 - [~] `TODO:` comments in `base.py`: the three font ones and the
       `dict_summary` flag are resolved. Remaining: line/marker error-checking in
       `Trace.mimic_2dline` / `mimic_errorbar`, the two "normalize these to one

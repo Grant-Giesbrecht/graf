@@ -2470,23 +2470,30 @@ class Graf(Packable):
 	def write_graf(self, filename:str, *, source_app:str=None, action:str=None,
 				   source_file:str=None, source_format:str=None,
 				   include_system_info:bool=True, debug_print:bool=False):
-		"""Serialize this Graf to a TOME file.
+		"""Serialize this Graf to a GrAF file.
 
-		Provenance is stamped automatically here (the single write choke point):
-		the creation record is written on first save and an append-only history
-		entry is added whenever the data has changed. Optional arguments let a
-		calling app identify itself and, for conversions, name the source:
-		  source_app          : e.g. 'graf_explorer 1.3.0' (recorded in provenance
-		                        and in the history entry for this save)
-		  action              : short label for this save, e.g. 'edited trace data'
-		  source_file         : path to a file this GrAF was converted from
-		                        (basename + SHA-256 are recorded, not the path)
-		  source_format       : e.g. 'touchstone_s2p', 'csv'
-		  include_system_info : stamp hostname / OS / CPU (default True); set
-		                        False to omit for privacy.
-		  debug_print         : dump the packed structure to stdout before
-		                        writing (default False). This is a debugging aid
-		                        only -- a library must not print on a normal save.
+		Provenance is stamped automatically here, this being the single write
+		choke point: the creation record is written on first save, and an
+		append-only history entry is added whenever the data has changed. The
+		format version is stamped too, so a file always declares the layout it
+		was actually written in.
+
+		Args:
+			filename: Path to write to.
+			source_app: Identity of the calling application, e.g.
+				``'graf_explorer 1.3.0'``. Recorded in the creation record and
+				in this save's history entry.
+			action: Short label for this save, e.g. ``'edited trace data'``.
+			source_file: Path to a file this GrAF was converted from. Only the
+				basename and a SHA-256 are recorded; the full path is not,
+				since it leaks directory structure and means nothing on another
+				machine.
+			source_format: Format converted from, e.g. ``'touchstone_s2p'``.
+			include_system_info: Stamp hostname, OS and CPU. Set ``False`` to
+				omit them for privacy.
+			debug_print: Dump the packed structure to stdout before writing.
+				A debugging aid only -- a library must not print on a normal
+				save.
 		"""
 		# Whatever is written here IS the current format, by construction. A file
 		# read from an older version keeps that version in info.version until it
