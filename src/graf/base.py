@@ -762,6 +762,45 @@ class GraphStyle(Packable):
 		self.obj_manifest.append("label_font")
 		self.obj_manifest.append("legend_font")
 
+def _poly3d_vertices(poly):
+	"""Every vertex of a Poly3DCollection, as an (n_verts, 3) array.
+
+	matplotlib has no public accessor for this, so the private storage has to be
+	read -- and it has been reorganised three times:
+
+	  * < 3.9   `_segments3d`, a list of per-face vertex arrays
+	  * 3.9-3.10 `_vec`, a 4 x n_verts homogeneous matrix (rows x, y, z, 1)
+	  * >= 3.11  `_faces`, an (n_faces, verts_per_face, 3) array
+
+	Each is tried in turn, newest first. Because these are private, a future
+	matplotlib may move them again; the error below says so plainly rather than
+	failing somewhere further downstream with a confusing message.
+	"""
+
+	# mpl >= 3.11
+	faces = getattr(poly, '_faces', None)
+	if faces is not None:
+		return np.asarray(faces).reshape(-1, 3)
+
+	# mpl 3.9 - 3.10
+	vec = getattr(poly, '_vec', None)
+	if vec is not None:
+		return np.asarray(vec)[:3, :].T
+
+	# mpl < 3.9
+	segments = getattr(poly, '_segments3d', None)
+	if segments is not None:
+		return np.vstack([np.asarray(seg) for seg in segments])
+
+	raise AttributeError(
+		f"Cannot extract vertex data from this Poly3DCollection: none of "
+		f"'_faces', '_vec' or '_segments3d' were found on it "
+		f"(matplotlib {matplotlib.__version__}). 3-D surface support relies on "
+		f"matplotlib internals, which have moved between releases; please "
+		f"report this with your matplotlib version."
+	)
+
+
 class Surface(Packable):
 	''' Represents a surface or image that can be displayed on a set of axes. 
 	Fundamentally what differentiates a surface from a Trace is if it has a single
@@ -914,21 +953,7 @@ class Surface(Packable):
 
 		self.surf_type = Surface.SURF_SURFACE
 
-		# Extract all vertex coordinates. The internal storage format changed in
-		# matplotlib 3.9: older versions used _segments3d (list of per-face arrays),
-		# newer versions use _vec (4 x n_verts homogeneous matrix, rows = x, y, z, 1).
-		if hasattr(mpl_source, '_vec') and hasattr(mpl_source, '_segslices'):
-			# mpl >= 3.9: _vec rows are (x, y, z, 1), columns are all verts concatenated
-			all_verts = mpl_source._vec[:3, :].T  # shape (n_verts, 3)
-		elif hasattr(mpl_source, '_segments3d'):
-			# mpl < 3.9: list of per-face vertex arrays
-			all_verts = np.vstack([np.asarray(s) for s in mpl_source._segments3d])
-		else:
-			raise AttributeError(
-				"Cannot extract vertex data from Poly3DCollection: "
-				"neither '_vec' nor '_segments3d' attribute found. "
-				"Unsupported matplotlib version."
-			)
+		all_verts = _poly3d_vertices(mpl_source)
 
 		# Unique x and y values define the two grid axes
 		unique_x = np.unique(np.round(all_verts[:, 0], 8))

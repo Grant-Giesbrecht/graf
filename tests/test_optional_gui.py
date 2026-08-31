@@ -5,10 +5,15 @@ the save/load path needs it. These tests keep the boundary from eroding: it is
 very easy for a convenience import in base.py to quietly make a GUI toolkit
 mandatory for everyone who only wants to read a file.
 """
+import os
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib                      # Python 3.11+
+except ModuleNotFoundError:             # 3.10
+    tomllib = None
 
 import pytest
 
@@ -17,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def pyproject():
+    if tomllib is None:
+        pytest.skip("tomllib requires Python 3.11+; GrAF supports 3.10")
     with open(ROOT / "pyproject.toml", "rb") as fh:
         return tomllib.load(fh)
 
@@ -46,10 +53,13 @@ class TestImportIsolation:
     mask the result."""
 
     def run(self, code):
+        # Inherit the real environment and override only what matters. Replacing
+        # it wholesale breaks Python startup on Windows, which needs SYSTEMROOT,
+        # and discards the virtualenv context on every platform.
+        env = dict(os.environ, MPLBACKEND="Agg")
         return subprocess.run(
             [sys.executable, "-c", code],
-            capture_output=True, text=True, cwd=str(ROOT),
-            env={"MPLBACKEND": "Agg", "PATH": "/usr/bin:/bin"},
+            capture_output=True, text=True, cwd=str(ROOT), env=env,
         )
 
     def test_importing_graf_does_not_import_pyqt(self):

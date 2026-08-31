@@ -118,6 +118,7 @@ jobs:
           out, err = io.StringIO(), io.StringIO()
           with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
               import graf
+              import graf.fonts
               import matplotlib.pyplot as plt
 
               path = os.path.join(tempfile.mkdtemp(), 'smoke.graf')
@@ -131,8 +132,12 @@ jobs:
           assert out.getvalue() == '', f'library printed to stdout: {out.getvalue()[:200]!r}'
 
           # Every bundled font must resolve from the installed wheel.
-          for family in graf.base.font_data['font-list']:
-              assert family['font-regular'] is not None, family['names'][0]
+          families, roles = graf.fonts.load_manifest(graf.base.mod_path)
+          assert families, 'no bundled font families resolved'
+          for family in families:
+              assert family['faces'], family['family']
+          for role in graf.GENERIC_ROLES:
+              assert roles.get(role), f'no bundled family serves {role}'
 
           print('smoke test passed:', graf.__version__,
                 '| format', graf.GRAF_FORMAT_VERSION)

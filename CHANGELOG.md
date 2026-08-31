@@ -57,6 +57,14 @@ file committed at `tests/data/`.
 
 ### Fixed
 
+- **3-D surfaces failed to save on matplotlib 3.11.** `Poly3DCollection`'s
+  internal vertex storage moved to `_faces`; GrAF looked only for the older
+  `_vec` (3.9-3.10) and `_segments3d` (< 3.9), and raised
+  `AttributeError: Cannot extract vertex data from Poly3DCollection`. All three
+  layouts are now handled, newest first. Since `matplotlib >= 3.9` is the
+  declared floor, a fresh install resolved 3.11 and 3-D surface support was
+  broken out of the box.
+
 - **The built wheel did not import.** `[tool.setuptools.package-data]` used
   arbitrary keys where setuptools expects package names, so no assets shipped —
   and `graf.base` loads the font manifest at import time. Every pip install of

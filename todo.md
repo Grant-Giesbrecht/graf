@@ -335,6 +335,29 @@ The gaps below are what stands between that and a release-quality suite.
 - [x] `examples/rich_plt_show_demo.py` annotated with the `[gui]` requirement,
       since it is the one example that no longer runs on a base install.
 
+### First CI run: 3 of 4 jobs red, all now fixed
+
+Running CI for the first time immediately earned its keep — it caught a real
+user-facing bug that every local run had hidden.
+
+- [x] **3-D surfaces broken on matplotlib 3.11** (the important one).
+      `Poly3DCollection` moved its vertex storage to `_faces`; GrAF checked only
+      `_vec` and `_segments3d`. My dev environment had matplotlib 3.10.8 pinned
+      while CI resolved 3.11.1, so 19 tests passed locally and failed on every
+      CI platform. With `matplotlib >= 3.9` declared, a fresh `pip install`
+      would have shipped broken 3-D support. Extraction is now version-tolerant
+      via `_poly3d_vertices`, verified against both 3.10.8 and 3.11.1.
+- [x] **`tomllib` used unconditionally** in `tests/test_optional_gui.py` — it is
+      3.11+, but the package supports 3.10, so collection failed with exit code
+      2 on both 3.10 jobs. Now gated with a skip.
+- [x] **Package job asserted `graf.base.font_data`**, removed during the font
+      rework. Updated to `graf.fonts.load_manifest`, and it now also checks every
+      generic role resolves.
+- [x] **Test subprocess wiped the environment** (`env={"PATH": "/usr/bin:/bin"}`),
+      which breaks Python startup on Windows (no `SYSTEMROOT`) and discards the
+      virtualenv everywhere. Now inherits `os.environ` and overrides only
+      `MPLBACKEND`.
+
 ## 3. Project hygiene
 
 - [x] **CI added** — `.github/workflows/ci.yml`. Two jobs:
