@@ -7,11 +7,12 @@ Note that two versions move independently: the **library** version below, and
 the **GrAF file format** version (`graf.GRAF_FORMAT_VERSION`), which changes
 only when the on-disk layout changes.
 
-## [Unreleased] — working toward 0.1.0
+## [0.1.0] — 2026-08-31
 
-The first release intended for general use. Everything before this was a `dev`
-prerelease, so the changes below are described relative to `0.0.0.dev4` rather
-than to a supported version.
+The first release intended for general use, and the first with a defined file
+format (**format version 1.0**). Everything before this was a `dev` prerelease,
+so the changes below are described relative to `0.0.0.dev4` rather than to a
+supported version.
 
 ### File format — BREAKING
 
