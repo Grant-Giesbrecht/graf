@@ -31,7 +31,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
 
+      # This job runs on the matrix, which includes windows-latest, where the
+      # default shell is PowerShell and a bash heredoc is a syntax error.
+      # `shell: bash` is supported on every GitHub runner.
       - name: Assert the GUI dependencies are absent
+        shell: bash
         run: |
           python - <<'PY'
           import importlib.util, sys
@@ -232,6 +236,19 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+
+      # PyQt6 wheels bundle Qt itself but still link against system graphics and
+      # X libraries, which the GitHub runner image does not carry. Without these,
+      # `import PyQt6.QtWidgets` fails with a bare
+      # "libEGL.so.1: cannot open shared object file".
+      - name: Install Qt's system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 libgl1 libdbus-1-3 libxkbcommon-x11-0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+            libxcb-xfixes0 libxcb-cursor0
 
       - name: Install with the gui extra
         run: |

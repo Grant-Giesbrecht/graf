@@ -125,9 +125,11 @@ class TestSafety:
 
     def test_existing_backup_is_never_overwritten(self, legacy_copy):
         """Refuse rather than destroy a backup the user may be relying on."""
-        open(legacy_copy + ".bak", 'w').write("precious")
+        with open(legacy_copy + ".bak", 'w') as fh:
+            fh.write("precious")
         assert upgrade_file(legacy_copy) == 'failed'
-        assert open(legacy_copy + ".bak").read() == "precious"
+        with open(legacy_copy + ".bak") as fh:
+            assert fh.read() == "precious"
 
     def test_no_backup_flag_writes_none(self, legacy_copy):
         upgrade_file(legacy_copy, backup=False)

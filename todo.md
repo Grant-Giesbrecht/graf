@@ -358,6 +358,21 @@ user-facing bug that every local run had hidden.
       virtualenv everywhere. Now inherits `os.environ` and overrides only
       `MPLBACKEND`.
 
+### Second CI run: Windows + GUI
+
+- [x] **All 4 Windows jobs failed on a bash heredoc.** The `test` job runs on the
+      matrix (which includes `windows-latest`), where the default shell is
+      PowerShell — `python - <<'PY'` is a syntax error there. Ubuntu and macOS
+      passed because they default to bash. Fixed with `shell: bash`, which every
+      GitHub runner supports. The heredocs in the `package` and `docs` jobs were
+      already safe, being Ubuntu-only; verified all five programmatically.
+- [x] **GUI job failed on missing Qt system libraries.** PyQt6 wheels bundle Qt
+      but still link against system graphics/X libraries that the runner image
+      does not carry, so `import PyQt6.QtWidgets` dies with
+      `libEGL.so.1: cannot open shared object file`. Added the apt packages.
+- [x] Closed two leaked file handles in `test_upgrade_cli.py` — harmless on
+      POSIX, but Windows holds locks on open files.
+
 ## 3. Project hygiene
 
 - [x] **CI added** — `.github/workflows/ci.yml`. Two jobs:
