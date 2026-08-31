@@ -299,6 +299,15 @@ The gaps below are what stands between that and a release-quality suite.
 - [x] **Docs build added to CI**, with `-W` (warnings as errors) plus a check
       that the API pages are not empty — which is exactly how the previous stub
       escaped notice.
+- [x] **RTD 404 on new pages, diagnosed and fixed.** Without pandoc, nbsphinx
+      raises and the build produces *no HTML at all*; RTD then keeps the
+      previous successful build published, so new pages 404 while the dashboard
+      shows a recent build. `apt_packages: [pandoc]` alone was not enough.
+      `conf.py` now guarantees pandoc on `PATH`, falling back to the
+      `pypandoc-binary` wheel, so the build cannot die this way on any machine.
+      CI builds *without* system pandoc to keep that fallback honest, and
+      asserts all 12 expected pages exist — a missing page is how a docs
+      regression actually reaches users.
 
 ### Packaging: GUI made optional
 

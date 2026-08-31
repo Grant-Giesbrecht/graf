@@ -7,6 +7,13 @@ sphinx-rtd-theme>=1.3.0
 nbsphinx>=0.9.5
 ipykernel
 
+# nbsphinx shells out to pandoc, which is not a Python package. .readthedocs.yaml
+# installs the real thing via apt_packages and conf.py prefers it; this wheel is
+# the fallback so the build never dies on a machine that lacks it. Without
+# pandoc the build produces NO output at all, which on RTD silently leaves the
+# previous build published and makes new pages 404.
+pypandoc-binary>=1.13
+
 # The package itself, from the repository root, so autodoc imports the code
 # being documented.
 .

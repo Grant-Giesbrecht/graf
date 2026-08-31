@@ -56,9 +56,45 @@ autodoc_mock_imports = ['PyQt6', 'mplcursors']
 
 # -- Notebooks ---------------------------------------------------------------
 
+
+def _ensure_pandoc_on_path():
+	"""Guarantee nbsphinx can find pandoc.
+
+	nbsphinx converts notebooks by shelling out to pandoc (via
+	nbconvert.utils.pandoc), so it only ever looks on PATH -- installing the
+	pypandoc wheel is not enough on its own. If pandoc is missing, nbsphinx
+	raises and the *entire* build dies, producing no HTML at all. On Read the
+	Docs that is especially misleading: the previous successful build stays
+	published, so new pages simply 404 while the dashboard shows a recent build.
+
+	System pandoc is preferred (.readthedocs.yaml installs it via apt_packages).
+	This falls back to the copy bundled with pypandoc-binary, so the docs build
+	on any machine without anyone having to install pandoc system-wide.
+	"""
+
+	import shutil
+
+	if shutil.which('pandoc'):
+		return
+
+	try:
+		import pypandoc
+		bundled = os.path.dirname(pypandoc.get_pandoc_path())
+	except Exception as e:
+		raise RuntimeError(
+			"pandoc was not found and the pypandoc fallback is unavailable "
+			f"({e}). nbsphinx needs pandoc to convert the tutorial notebooks. "
+			"Install it with your package manager (brew install pandoc / "
+			"apt install pandoc), or pip install pypandoc-binary."
+		) from e
+
+	os.environ['PATH'] = bundled + os.pathsep + os.environ.get('PATH', '')
+
+
+_ensure_pandoc_on_path()
+
 # Notebooks are executed at build time so their output always matches the
-# version being documented. nbsphinx needs pandoc, which .readthedocs.yaml
-# installs via apt_packages -- without it the whole build fails.
+# version being documented.
 nbsphinx_execute = 'always'
 nbsphinx_allow_errors = False   # a tutorial that no longer runs must fail loudly
 nbsphinx_kernel_name = 'python3'

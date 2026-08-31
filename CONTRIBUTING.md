@@ -81,10 +81,17 @@ pip install -r docs/requirements.txt
 sphinx-build -b html docs/source docs/_build
 ```
 
-**You need `pandoc` installed** — nbsphinx shells out to it to convert the
-tutorial notebooks, and without it the build fails outright. On macOS,
-`brew install pandoc`; on Debian/Ubuntu, `apt install pandoc`. Read the Docs
-installs it via `apt_packages` in `.readthedocs.yaml`.
+nbsphinx converts the tutorial notebooks by shelling out to **pandoc**, which
+is not a Python package. `docs/requirements.txt` includes `pypandoc-binary` as a
+fallback and `conf.py` puts it on `PATH`, so the build works out of the box. A
+system pandoc (`brew install pandoc`, `apt install pandoc`) is preferred if you
+have one.
+
+This matters more than it sounds: without pandoc, nbsphinx raises and the build
+produces **no HTML at all**. On Read the Docs that is silent — the previous
+successful build stays published, so new pages 404 while the dashboard reports a
+recent build. CI builds without system pandoc on purpose, to keep the fallback
+working, and asserts every expected page was generated.
 
 Notebooks are executed at build time (`nbsphinx_execute = 'always'`) with
 `nbsphinx_allow_errors = False`, so a tutorial that no longer runs fails the

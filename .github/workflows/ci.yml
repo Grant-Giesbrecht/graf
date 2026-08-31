@@ -153,9 +153,11 @@ jobs:
           python-version: '3.12'
           cache: pip
 
-      - name: Install pandoc
-        run: sudo apt-get update && sudo apt-get install -y pandoc
-
+      # Deliberately NOT installing system pandoc. Read the Docs installs it via
+      # apt_packages, but when that silently does not happen the build dies and
+      # produces no HTML -- leaving the previous build published, so new pages
+      # 404 while the dashboard reports a recent build. conf.py falls back to
+      # the pypandoc wheel; this job is what proves that fallback works.
       - name: Install docs dependencies
         run: |
           python -m pip install --upgrade pip
@@ -165,6 +167,35 @@ jobs:
         env:
           MPLBACKEND: Agg
         run: sphinx-build -b html -W --keep-going docs/source docs/_build
+
+      - name: Check every expected page was generated
+        run: |
+          python - <<'PY'
+          import os, sys
+
+          # A missing page is how a docs regression actually reaches users: the
+          # build "succeeds", the site keeps serving whatever it had, and a link
+          # 404s. Assert the pages exist rather than trusting the exit code.
+          expected = [
+              'index.html',
+              'installation.html',
+              'format.html',
+              'changelog.html',
+              'license.html',
+              'api/index.html',
+              'api/graf.html',
+              'api/base.html',
+              'api/fonts.html',
+              'tutorials/index.html',
+              'tutorials/Introduction.html',
+              'tutorials/How_it_works.html',
+          ]
+          missing = [p for p in expected if not os.path.isfile(os.path.join('docs/_build', p))]
+          if missing:
+              print('MISSING PAGES:', *missing, sep='\n  ')
+              sys.exit(1)
+          print(f'all {len(expected)} expected pages generated')
+          PY
 
       - name: Check the API reference is not empty
         run: |
