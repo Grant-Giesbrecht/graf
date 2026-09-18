@@ -1,4 +1,4 @@
-.. image:: ../images/graf_banner.png
+.. image:: ../images/graf_logo.png
     :target: grafhome_
     :width: 700
     :align: center

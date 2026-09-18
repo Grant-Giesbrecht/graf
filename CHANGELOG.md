@@ -7,6 +7,12 @@ Note that two versions move independently: the **library** version below, and
 the **GrAF file format** version (`graf.GRAF_FORMAT_VERSION`), which changes
 only when the on-disk layout changes.
 
+## [Unreleased]
+
+Nothing yet. Known limitations carried forward from 0.1.0 are tracked in
+`todo.md`; anything that changes the on-disk layout must also follow the
+procedure in `FORMAT.md`.
+
 ## [0.1.0] — 2026-08-31
 
 The first release intended for general use, and the first with a defined file
