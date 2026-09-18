@@ -448,6 +448,66 @@ user-facing bug that every local run had hidden.
 No licence file is currently bundled with any of them — that is the compliance
 gap, not the redistribution right itself.
 
+## 5. Cached preview image (planned — next format version bump)
+
+Not being implemented now; recording the plan from scoping macOS QuickLook and
+Obsidian (`![[file.graf]]`) integration for GrAF Explorer. Neither host can
+parse GrAF/HDF5 natively, and reimplementing GrAF's actual renderer a second
+(and third) time in Swift and JS just to draw a thumbnail isn't worth it — the
+plan instead follows the convention iWork/Sketch/Procreate/Photoshop already
+use: embed a rendered preview in the file itself, and let both integrations
+just display that, not re-render from data.
+
+- [ ] **Embed a cached vector preview (SVG or PDF — no preference between the
+      two) on save.** New top-level field alongside `axes`/`style`/`info`,
+      regenerated every `write_graf()`; this is a format change, so it lands
+      on a version bump, not a patch.
+- [ ] **Rasterize gridded/2D-image data in that embedded preview — do not
+      export it as vector.** Found while scoping this: a plain vector PDF of a
+      400×400 `pcolormesh` came out to 3.5 MB, because each grid cell becomes
+      its own vector path (160,000 of them). The same figure with
+      `rasterized=True` on the image/colormap artist came out to 192 KB. Line
+      traces should stay vector; only gridded/2D-image elements need
+      `rasterized=True` before export. This is a real footgun if whoever
+      implements this just calls `savefig(..., format="pdf")` without
+      thinking about it.
+- [ ] Possibly also a second, smaller cached raster thumbnail (PNG) alongside
+      the vector preview, for contexts wanting a fast fixed-size icon rather
+      than an SVG/PDF (Finder icon, an Obsidian inline embed). Mirrors
+      iWork's `Thumbnail.jpg` + `Preview.pdf` split. Not decided whether this
+      belongs in the same bump or is separable.
+- [ ] Measured size impact (see conversation log for full numbers): roughly
+      +15–70% on a near-empty file (2 traces × 20 pts, ~80 KB baseline) but
+      only +1–5% on a data-heavy file (thousands of points / a colorplot,
+      multi-MB baseline) — worst relative cost exactly where the absolute
+      cost (a few KB) doesn't matter, negligible exactly where files are
+      already large. Not a blocker either way. Note this was measured against
+      a pre-`dict_to_tome`-repack baseline — see the note below.
+- [ ] **macOS QuickLook integration plan:** a `QLPreviewingController` app
+      extension (Swift, `.appex` bundle shipped inside GrAF Explorer.app),
+      declaring an exported UTI for `.graf` in `Info.plist`. The extension
+      only needs to pull the embedded preview out of the HDF5 container (a
+      Swift HDF5 binding, or a minimal custom reader since we control the
+      format) and hand it back — no GrAF rendering logic needs to exist in
+      Swift. Needs code signing/notarization; Launch Services registration
+      requires the host app to have launched at least once.
+- [ ] **Obsidian integration plan:** a community plugin calling
+      `registerExtensions(['graf'], viewtype)` plus Obsidian's embed registry
+      so `![[file.graf]]` resolves to a custom embeddable view instead of
+      "unsupported file type." Reads the file (Node/Electron has full
+      filesystem access), pulls the embedded preview out (HDF5-in-JS via
+      something like `h5wasm`, or a minimal parser given we control the
+      format), and renders it. True interactive re-rendering from raw trace
+      data in JS would be a much bigger, separate undertaking — out of scope
+      for this bump.
+- [ ] **Filesize note:** once `dict_to_tome` in stardust auto-repacks on write
+      (see `../stardust/docs/TODO.md`), the baseline `.graf` size this preview
+      gets added on top of should drop substantially — a real file inspected
+      during this scoping work was 1.27 MB before repack, 60 KB after, for the
+      same 20-odd data points. Re-measure the preview's relative size cost
+      once that lands; the percentages above were measured against an
+      un-repacked baseline and will look worse than the true cost.
+
 ---
 
 ## Done
