@@ -762,6 +762,25 @@ class GraphStyle(Packable):
 		self.obj_manifest.append("label_font")
 		self.obj_manifest.append("legend_font")
 
+def _grid_to_list(arr) -> list:
+	"""Convert a (possibly masked) numpy array to a nested float list.
+
+	Masked entries become NaN. A bare ``.tolist()`` on a masked array turns
+	masked entries into ``None``, which forces the grid to be serialized as a
+	ragged JSON-encoded object array and breaks rendering when read back.
+	"""
+	return np.ma.filled(np.ma.asarray(arr, dtype=float), np.nan).tolist()
+
+
+def _grid_to_array(grid) -> np.ndarray:
+	"""Convert a stored grid back to a float array, mapping ``None`` to NaN.
+
+	Tolerates files written by older versions that stored masked entries as
+	``None``.
+	"""
+	return np.array(grid, dtype=float)
+
+
 def _poly3d_vertices(poly):
 	"""Every vertex of a Poly3DCollection, as an (n_verts, 3) array.
 
@@ -895,7 +914,7 @@ class Surface(Packable):
 		# Store corners — pcolormesh accepts (M+1)×(N+1) corner arrays directly
 		self.x_grid = x_corners.tolist()
 		self.y_grid = y_corners.tolist()
-		self.z_grid = mpl_source.get_array().tolist()
+		self.z_grid = _grid_to_list(mpl_source.get_array())
 
 		# Alpha
 		self.alpha = mpl_source.get_alpha()
@@ -918,7 +937,7 @@ class Surface(Packable):
 		
 		# Get Z data - dimensions will be used to find X and Y
 		zg_raw = mpl_source.get_array()
-		self.z_grid = zg_raw.tolist()
+		self.z_grid = _grid_to_list(zg_raw)
 		
 		# Get X and Y coordinates
 		x_min, x_max, y_min, y_max = mpl_source.get_extent()
@@ -1024,7 +1043,7 @@ class Surface(Packable):
 	def _apply_to_image(self, ax):
 		x = np.array(self.x_grid)
 		y = np.array(self.y_grid)
-		z = np.array(self.z_grid)
+		z = _grid_to_array(self.z_grid)
 		cmap = mcolors.ListedColormap(self.cmap)
 		vmin, vmax = self._clim(z)
 		# shading='auto' correctly handles both old .graf files (center coordinates,
@@ -1036,7 +1055,7 @@ class Surface(Packable):
 		''' Reconstructs a 3D surface via ax.plot_surface(). '''
 		X = np.array(self.x_grid)
 		Y = np.array(self.y_grid)
-		Z = np.array(self.z_grid)
+		Z = _grid_to_array(self.z_grid)
 		cmap = mcolors.ListedColormap(self.cmap)
 		vmin, vmax = self._clim(Z)
 		return ax.plot_surface(X, Y, Z, cmap=cmap, alpha=self.alpha,
@@ -1058,7 +1077,7 @@ class Surface(Packable):
 			return
 
 		# Determine the exact color limits to enforce.
-		vmin, vmax = self._clim(np.array(self.z_grid))
+		vmin, vmax = self._clim(_grid_to_array(self.z_grid))
 
 		# Pin the mappable before creating the colorbar so matplotlib builds
 		# the colorbar axis to exactly this range.
